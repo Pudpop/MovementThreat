@@ -421,4 +421,8 @@ ggplot()+
   theme(panel.border=element_rect(color=green)) +
   labs(title="Average Positions",x="",y="")
 
-
+wDF <- df[,c(2,2,1,4,5)]
+wDF$id<-as.numeric(wDF$id)
+wDF$id.1<-as.numeric(wDF$id.1)
+wDF$frame<-as.numeric(wDF$frame)
+write.table(wDF,"small.txt",sep=";",row.names = F,col.names=F)
