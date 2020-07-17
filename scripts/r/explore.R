@@ -8,14 +8,18 @@ library(dplyr)
 
 #plots
 library(ggplot2)
+library(ggforce)
 library(RColorBrewer)
 library(ggpubr)
 library(mapview)
+library(wesanderson)
 
 #spatial
 library(sf)
 library(sp)
 library(rgdal)
+
+pal <- wes_palette("Zissou1", 5, type = "discrete")
 
 #format data as necessary
 
@@ -83,6 +87,14 @@ df$frame<-as.factor(df$frame)
 #colnames(box) <- c("min","max")
 
 
+p <- pitch_plot(68, 105) +
+  geom_polygon(data = filter(data_hull, team == 'team A'), aes(x, y, frame = .frame), fill = 'red', alpha = 0.4) +
+  geom_polygon(data = filter(data_hull, team == 'team B'), aes(x, y, frame = .frame), fill = 'blue', alpha = 0.4) +
+  geom_point(data = filter(data, str_detect(team, 'team')), aes(x, y, group = player, fill = team, frame = .frame), shape = 21, size = 6, stroke = 2) +
+  geom_point(data = filter(data, team == 'ball'), aes(x, y, frame = .frame), shape = 21, fill = 'dark orange', size = 4) +
+  scale_fill_manual(values = c('team A' = 'red', 'team B' = 'blue')) +
+  geom_text(data = filter(data, str_detect(team, 'team')), aes(x, y, label = player, frame = .frame), color = 'white') +
+  guides(fill = FALSE)
 
 plot_pos <- function(df, lengthPitch = 105, widthPitch = 68, fill1 = "red", 
                      col1 = NULL, fill2 = "blue", col2 = NULL, labelCol = "black", 
@@ -286,4 +298,127 @@ for(i in 1:frames){
 
 p2 <- ctm_Plot(team1)
 p2
+
+#average pass positions
+hun<-df[1:100,]
+hun$x <- as.numeric(hun$x)
+hun$y <- as.numeric(hun$y)
+
+pos <- df %>%
+  group_by(team, id) %>%
+  dplyr::summarise(x.mean = mean(x), y.mean = mean(y)) %>% 
+  ungroup() %>%
+  mutate(team = as.factor(team), id = as.factor(id)) %>%
+  as.data.frame()
+
+cent <- pos %>%
+  subset(!(id %in% c(2,13)))%>%
+  group_by(team) %>%
+  dplyr::summarise(centX = mean(x.mean), centY = mean(y.mean)) %>% 
+  ungroup() %>%
+  mutate(team = as.factor(team)) %>%
+  as.data.frame()
+
+data_hull <- pos %>%
+  filter(!(id %in% c(2,13))) %>%
+  group_by(team)%>%
+  nest() %>%
+  mutate(
+    hull = map(data, ~ with(.x, chull(x.mean, y.mean))),
+    out = map2(data, hull, ~ .x[.y,,drop=FALSE])
+  )%>%
+  select(-data)%>%
+  unnest()
+
+fte_theme <- function(font = c("serif","serif"), pal = brewer.pal("Greys",n=9),sizes = c(8,12,14)){
+  
+  # Generate the colors for the chart procedurally with RColorBrewer
+  color.background = pal[1]
+  color.grid.major = pal[3]
+  color.axis.text = pal[6]
+  color.axis.title = pal[7]
+  color.title = pal[9]
+  
+  # Begin construction of chart
+  
+  theme_bw(base_size=9) +
+    
+    # Set the entire chart region to a light gray color
+    
+    theme(panel.background=element_rect(fill=color.background, color=color.background)) +
+    theme(plot.background=element_rect(fill=color.background, color=color.background)) +
+    theme(panel.border=element_rect(color=color.background)) +
+    
+    # Format the grid
+    
+    theme(panel.grid.major=element_line(color=color.grid.major,size=.25)) +
+    theme(panel.grid.minor=element_blank()) +
+    theme(axis.ticks=element_blank()) +
+    
+    # Format the legend, but hide by defaut
+    
+    #theme(legend.position="none") +
+    theme(legend.background = element_rect(fill=color.background)) +
+    theme(legend.text = element_text(size=7,color=color.axis.title, family=font[[1]])) +
+    
+    # Set title and axis labels, and format these and tick marks
+    
+    theme(plot.title=element_text(color=color.title, size=sizes[[2]], vjust=1.25, family=font[[2]])) +
+    theme(plot.subtitle=element_text(color=color.title, size=sizes[[3]], vjust=1.25, family=font[[1]])) +
+    theme(legend.title =element_text(color=color.title, size=sizes[[2]], vjust=1.25, family=font[[1]])) +
+    theme(axis.text.x=element_text(size=sizes[[1]],color=color.axis.text, family=font[[1]])) +
+    theme(axis.text.y=element_text(size=sizes[[1]],color=color.axis.text, family=font[[1]])) +
+    theme(axis.title.x=element_text(size=sizes[[1]],color=color.axis.title, vjust=0, family=font[[1]])) +
+    theme(axis.title.y=element_text(size=sizes[[1]],color=color.axis.title, vjust=1.25, family=font[[1]])) +
+    
+    # Plot margins
+    
+    theme(plot.margin = unit(c(0.35, 0.2, 0.3, 0.35), "cm"))
+}
+
+green = "#228C22"
+
+ggplot()+
+  geom_point(data = pos,
+             aes(x=x.mean+53.5,y=y.mean+35,colour=team),
+             size=3,alpha=1)+
+  geom_point(data = cent,
+             aes(x=centX+53.5,y=centY+35,colour=team,fill=team),
+             size=5)+
+  geom_polygon(data = filter(data_hull, team == 'h'), aes(x.mean+53.5, y.mean+35),fill=pal[4], alpha = 0.35) +
+  geom_polygon(data = filter(data_hull, team == 'a'), aes(x.mean+53.5, y.mean+35),fill=pal[2], alpha = 0.35) +
+  #perimeter
+  geom_rect(aes(xmax=107,xmin=0,ymax=70,ymin=0),fill=NA,color="grey")+
+  # centre circle
+  geom_circle(aes(x0 = lengthPitch/2, y0 = widthPitch/2, r = 9.15), col = colPitch, lwd = lwd) +
+  # kick off spot
+  geom_circle(aes(x0 = lengthPitch/2, y0 = widthPitch/2, r = 0.25), fill = colPitch, col = colPitch, lwd = lwd) +
+  # halfway line
+  geom_segment(aes(x = lengthPitch/2, y = 0, xend = lengthPitch/2, yend = widthPitch), col = colPitch, lwd = lwd) +
+  # penalty arcs
+  geom_arc(aes(x0= 11, y0 = widthPitch/2, r = 9.15, start = pi/2 + 0.9259284, end = pi/2 - 0.9259284), col = colPitch, lwd = lwd) +
+  geom_arc(aes(x0 = lengthPitch - 11, y0 = widthPitch/2, r = 9.15, start = pi/2*3 - 0.9259284, end = pi/2*3 + 0.9259284), col = colPitch, lwd = lwd) +
+  # penalty areas
+  geom_rect(aes(x=NULL,y=NULL,xmin = 0, xmax = 16.5, ymin = widthPitch/2 - 20.15, ymax = widthPitch/2 + 20.15), fill = NA, col = colPitch, lwd = lwd) +
+  geom_rect(aes(x=NULL,y=NULL,xmin = lengthPitch - 16.5, xmax = lengthPitch, ymin = widthPitch/2 - 20.15, ymax = widthPitch/2 + 20.15), fill = NA, col = colPitch, lwd = lwd) +
+  # penalty spots
+  geom_circle(aes(x0 = 11, y0 = widthPitch/2, r = 0.25), fill = colPitch, col = colPitch, lwd = lwd) +
+  geom_circle(aes(x0 = lengthPitch - 11, y0 = widthPitch/2, r = 0.25), fill = colPitch, col = colPitch, lwd = lwd) +
+  # six yard boxes
+  geom_rect(aes(x=NULL,y=NULL,xmin = 0, xmax = 5.5, ymin = (widthPitch/2) - 9.16, ymax = (widthPitch/2) + 9.16), fill = NA, col = colPitch, lwd = lwd) +
+  geom_rect(aes(x=NULL,y=NULL,xmin = lengthPitch - 5.5, xmax = lengthPitch, ymin = (widthPitch/2) - 9.16, ymax = (widthPitch/2) + 9.16), fill = NA, col = colPitch, lwd = lwd) +
+  # goals
+  geom_rect(aes(x=NULL,y=NULL,xmin = -2, xmax = 0, ymin = (widthPitch/2) - 3.66, ymax = (widthPitch/2) + 3.66), fill = NA, col = colPitch, lwd = lwd) +
+  geom_rect(aes(x=NULL,y=NULL,xmin = lengthPitch, xmax = lengthPitch + 2, ymin = (widthPitch/2) - 3.66, ymax = (widthPitch/2) + 3.66), fill = NA, col = colPitch, lwd = lwd)+
+  geom_hline(yintercept=cent$centY[1])+
+  coord_fixed()+
+  scale_color_manual(values=pal[c(1,5,3)])+
+  scale_x_continuous(breaks = seq(-200,-180,by=10)) +
+  scale_y_continuous(breaks = seq(-200,-180,by=10)) +
+  fte_theme(font = c("Segoe UI Light","Segoe UI"))+
+  theme(panel.background=element_rect(fill=green, color=green)) +
+  theme(plot.background=element_rect(fill=green, color=green)) +
+  theme(panel.border=element_rect(color=green)) +
+  labs(title="Average Positions",x="",y="")
+
 
