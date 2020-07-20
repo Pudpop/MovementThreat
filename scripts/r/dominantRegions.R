@@ -1,7 +1,7 @@
 #set wd to where data is
-setwd('C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data')
+setwd('C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/groundtruth')
 
-data = read.csv('groundtruth.csv')
+data = read.csv('../groundtruth.csv')
 
 #general
   library(dplyr)
@@ -11,11 +11,14 @@ data = read.csv('groundtruth.csv')
   library(RColorBrewer)
   library(ggpubr)
   library(mapview)
+  library(wesanderson)
 
 #spatial
   library(sf)
   library(sp)
   library(rgdal)
+
+pal <- wes_palette("Zissou1", 5, type = "discrete")
 
 #format data as necessary
 
@@ -53,11 +56,28 @@ data = read.csv('groundtruth.csv')
     df$vY<-as.numeric(df$vY)
 
 #angles using for
-angles <- as.matrix(seq(from = 0, to = 360, by = 6))
+angles <- as.matrix(seq(from = 0, to = 360, by = 15))
 
 #taki's movement model function. Needs to be reweighted for velocities
-taki <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,a = 4.2){
-  return(c(origin[1]+(0.5*a*cos(angle)*t^2+v[1]*t),origin[2]+(0.5*a*sin(angle)*t^2+v[2]*t)))
+taki <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,a = 4.2,scale=1){
+  v[1] = scale * v[1]
+  v[2] = scale * v[2]
+  newX <- origin[1]+(0.5*a*cos(angle)*t^2+v[1]*t)
+  if (newX > 53.5){
+    newX = 53.5
+  }
+  else if (newX < -53.5){
+    newX = -53.5
+  }
+  newY <- origin[2]+(0.5*a*sin(angle)*t^2+v[2]*t)
+  if (newY > 35){
+    newY = 35
+  }
+  else if (newY < -35){
+    newY = -35
+  }
+  return(c(newX,newY))
+
 }
 
 
@@ -96,8 +116,8 @@ reach <- function(param,FUNC = taki){
     #           2.4,2.8,3.2,3.6,4.0,4.5,5,6,7,8,9,10)
     #times <- seq(0.01,0.5,by=0.01)
     #times <- c(0.01,0.05,0.1,0.2,0.4,0,7,1,1.5,2,2.5,3,4,5,7,10,12)
-    #times <- c(seq(0.01,1.5,by = 0.01),seq(0.2,0.48,by=0.02),seq(0.5,2,by=0.3),seq(2.4,6,by=0.4))
-    times <- c(seq(0.01,2,by = 0.02))
+    times <- c(seq(0.01,1.5,by = 0.01),seq(0.2,0.48,by=0.02),seq(0.5,2,by=0.3),seq(2.4,6,by=0.4))
+    #times <- c(seq(0.01,2,by = 0.02))
     #times <- seq(0.5,10,by=0.5)
     #times <- c(0.1,0.2,0.3,0.4,0.5,1,2,3)
 
@@ -110,7 +130,7 @@ for (l in  1:length(times)){
   time = times[[l]]
 
   #apply reachable region function to all players
-  rr<-apply(FUN=reach,MARGIN=1,X=cbind(df[,4:7],rep(time,nrow(df))),FUNC = fujsug)
+  rr<-apply(FUN=reach,MARGIN=1,X=cbind(df[,4:7],rep(time,nrow(df))))#,FUNC = fujsug)
 
   #format column names for bind_rows
   for ( i in 1:length(rr)){
@@ -164,19 +184,28 @@ for (l in  1:length(times)){
 
 #step 4 of algorithm: synthesize the partial dominant regions
 synthesize <- function(index,parts=partialRR){
-  th <- parts[[2]][[index]]
+  precision = 10000000
+  th <- (parts[[2]][[index]] %>% st_sfc() %>% st_set_precision(1000000))[[1]]
   if (class(th)[[2]]=="MULTIPOLYGON"){
     th <- st_make_valid(parts[[2]][[index]]) %>%
             st_cast("MULTIPOLYGON") %>%
             st_cast("POLYGON")
   }
+  else if (class(th)[[2]]=="GEOMETRYCOLLECTION"){
+    th <- st_make_valid(parts[[2]][[index]]) %>%
+      st_cast("POLYGON")
+  }
+  else if (class(th)[[2]]=="LINESTRING"){
+    th <- st_make_valid(parts[[2]][[index]]) %>%
+      st_cast("POLYGON")
+  }
   poly <- th
   sum <- th
   for (i in 2:length(times)){
     temp <- 2*i
-    th <- parts[[temp]][[index]]
+    th <- (parts[[temp]][[index]] %>% st_sfc() %>% st_set_precision(precision))[[1]]
     if (class(th)[[2]]=="MULTIPOLYGON"){
-      th <- st_make_valid(parts[[temp]][[index]])
+      th <- (parts[[temp]][[index]] %>% st_sfc() %>% st_set_precision(precision) %>% st_make_valid())[[1]]
       huh<-data.frame(cbind(rep(1,nrow(th[[1]][[1]])),
                             th[[1]][[1]]))
       colnames(huh)<-c("id" ,"x" , "y" )
@@ -196,32 +225,47 @@ synthesize <- function(index,parts=partialRR){
       }
     }
     else{
-      p <- st_make_valid(st_difference(th,sum))
+      p <- (st_sfc(th) %>% st_set_precision(precision) %>% st_make_valid())[[1]]
+      p <- (p %>% st_difference(sum) %>% st_sfc() %>% st_set_precision(precision) %>% st_make_valid())[[1]]
     }
 
-    if (class(p)[[2]]!="GEOMETRYCOLLECTION"){
-
+    if (class(p)[[2]]!="GEOMETRYCOLLECTION" && class(p)[[2]]!="data.frame"){
+      ttemp <- poly
       poly <- st_union(p,poly)
+      if (!(class(poly)[[2]] %in% c("POLYGON","MULTIPOLYGON") )){
+        poly <- ttemp
+      }
       sum <- st_union(sum,th)
     }
 
   }
   return(poly)
 }
-combined<-synthesize(partialRR,2)
-#temp<-st_cast(,"POLYGON")[[1]]
-#combined <- cbind(as.data.frame(temp),rep(1,length(temp)))
-#colnames(combined) <- c("x","y","id")
-
-for (i in 2:23){
-  #temp<-st_cast(synthesize(partialRR,i),"POLYGON")[[1]]
-  #combinedT <- cbind(as.data.frame(temp),rep(i,length(temp)))
-  #colnames(combinedT) <- c("x","y","id")
-  #combined <- rbind(combined,combinedT)
-  combined <- c(combined,synthesize(partialRR,i))
+t.combined<-synthesize(20,partialRR)
+temp<-st_cast(st_sfc(synthesize(1,partialRR)),"POLYGON")
+combined <- cbind(as.data.frame(temp[[1]][[1]]),rep(1,length(temp[[1]][[1]])))
+colnames(combined) <- c("x","y","id")
+for (i in 2:length(temp)){
+  temp2 <- cbind(as.data.frame(temp[[i]][[1]]),rep(1,length(temp[[i]][[1]])))
+  colnames(temp2) <- c("x","y","id")
+  combined <- rbind(combined,temp2)
 }
+##
+  for (i in 2:23){
+    temp<-st_cast(st_sfc(synthesize(i,partialRR)),"POLYGON")
+    combinedT <- cbind(as.data.frame(temp[[1]][[1]]),rep(i,length(temp[[1]][[1]])))
+    colnames(combinedT) <- c("x","y","id")
+    if (length(temp)>1){
+      for (j in 2:length(temp)){
+        temp2 <- cbind(as.data.frame(temp[[j]][[1]]),rep(i,length(temp[[j]][[1]])))
+        colnames(temp2) <- c("x","y","id")
+        combinedT <- rbind(combinedT,temp2)
+      }
+    }
 
-
+    combined <- rbind(combined,combinedT)
+    #combined <- c(combined,synthesize(i,partialRR))
+  }
 
 combined <- combined %>%
   st_as_sf( coords = c( "x", "y" ) )
@@ -236,14 +280,16 @@ ggplot(hulls,aes(fill=as.factor(id))) +
   geom_point(data = df,aes(x=x,y=y),position = 'jitter')
 
 #,aes(fill=as.factor(id))
-ggplot(st_sf(partialRR[[8]])) +
+ggplot(st_sf(partialRR[[10]])) +
   #  fte_theme()+
   geom_sf() +
   geom_point(data = df,aes(x=x,y=y),position = 'jitter')
 
-ggplot(combined,aes(fill=as.factor(id))) +
-  #  fte_theme()+
-  geom_sf(alpha=0.5) +
+green  = "#228C22"
+
+soccerPitch() +
+    fte_theme()+
+  geom_sf(data= combined,alpha=0.5) +
   geom_point(data = df,aes(x=x,y=y),position = 'jitter')
 
 
@@ -296,3 +342,57 @@ ggplot(vor, aes(x=long,y=lat))+
 ggplot(nc) +
   fte_theme()+
   geom_sf()
+
+#use current time
+time = 0.5
+
+#apply reachable region function to all players
+rr<-apply(FUN=reach,MARGIN=1,X=cbind(df[,4:7],rep(time,nrow(df))),FUNC = fujsug)
+
+#format column names for bind_rows
+for ( i in 1:length(rr)){
+  colnames(rr[[i]]) <- c("x","y")
+}
+#create one data frame
+rr<-bind_rows(rr,.id='id')
+
+#convert to sf object
+df.sf <- rr %>%
+  st_as_sf( coords = c( "x", "y" ) )
+
+#find convex hulls of each region
+hulls <- df.sf %>%
+  group_by( id ) %>%
+  summarise( geometry = st_combine( geometry ) ) %>%
+  st_convex_hull()
+
+#list of all intersections between polygons in sf object hulls
+inter<-st_intersects(hulls)
+
+#initial list of two-way intersections
+tw_inter <- data.frame(x=c(),y=c())
+
+# find all pairwise intersections
+for (i in 1:length(inter)){
+  for (j in 1:length(inter[[i]])){
+    temp <- data.frame(cbind(i,inter[[i]][j]))
+    rev <- data.frame(cbind(inter[[i]][j],i))
+    colnames(rev) <- c("i","V1")
+    bool <- nrow(merge(tw_inter, rev)) == 0
+    if (bool && temp$i[1]!=temp$V2[1]){
+      tw_inter <- rbind(tw_inter,temp)
+    }
+  }
+}
+
+#find partial regions
+temp <- hulls
+if (nrow(tw_inter)>0){
+  for (k in 1:nrow(tw_inter)){
+    diff1<- st_difference(temp$geometry[[tw_inter$i[[k]]]],hulls$geometry[[tw_inter$V2[[k]]]])
+    diff2 <- st_difference(temp$geometry[[tw_inter$V2[[k]]]],hulls$geometry[[tw_inter$i[[k]]]])
+    temp$geometry[[tw_inter$i[[k]]]] <- diff1
+    temp$geometry[[tw_inter$V2[[k]]]] <- diff2
+  }
+}
+partialRR <- c(partialRR,temp)
