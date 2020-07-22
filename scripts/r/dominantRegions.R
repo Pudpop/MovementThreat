@@ -50,10 +50,13 @@ pal <- wes_palette("Zissou1", 5, type = "discrete")
     }
 
     #clean up
-    df$x<-as.numeric(df$x)
-    df$y<-as.numeric(df$y)
+    df$x<-as.numeric(df$x)+53.5
+    df$y<-as.numeric(df$y)+35
     df$vX<-as.numeric(df$vX)
     df$vY<-as.numeric(df$vY)
+    df$speed <- sqrt((vX)^2+(vY)^2)
+    df$speedGroup <- as.numeric(cut(df$speed, seq(0,3,by=0.1),include.lowest = T))
+    df$time <- as.numeric(df$frame)/10
 
 #angles using for
 angles <- as.matrix(seq(from = 0, to = 360, by = 15))
@@ -82,7 +85,7 @@ taki <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,a = 4.2,scale=1){
 
 
 #fujimura, needs to be reweighted
-fujsug <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,alpha = 1.3,vM = 8,scale = 1){
+fujsug <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,alpha = 1.3,vM = 2.94,scale = 1){
   v[1] = scale * v[1]
   v[2] = scale * v[2]
   newX <- origin[1]+(vM*cos(angle)*(t-(1-exp(alpha*t))/(alpha))+v[1]*(1-exp(alpha*t))/(alpha))
@@ -130,7 +133,7 @@ for (l in  1:length(times)){
   time = times[[l]]
 
   #apply reachable region function to all players
-  rr<-apply(FUN=reach,MARGIN=1,X=cbind(df[,4:7],rep(time,nrow(df))))#,FUNC = fujsug)
+  rr<-apply(FUN=reach,MARGIN=1,X=cbind(df[1:23,4:7],rep(time,nrow(df[1:23,]))),FUNC = fujsug)
 
   #format column names for bind_rows
   for ( i in 1:length(rr)){
@@ -245,10 +248,12 @@ t.combined<-synthesize(20,partialRR)
 temp<-st_cast(st_sfc(synthesize(1,partialRR)),"POLYGON")
 combined <- cbind(as.data.frame(temp[[1]][[1]]),rep(1,length(temp[[1]][[1]])))
 colnames(combined) <- c("x","y","id")
+if (length(temp)>1){
 for (i in 2:length(temp)){
   temp2 <- cbind(as.data.frame(temp[[i]][[1]]),rep(1,length(temp[[i]][[1]])))
   colnames(temp2) <- c("x","y","id")
   combined <- rbind(combined,temp2)
+}
 }
 ##
   for (i in 2:23){
@@ -316,83 +321,73 @@ hulls <- df.sf %>%
 
 plot(hulls)
 
+##Brefeld
 
-#other
-mapview::mapview( df.sf )
+##transform the datapoint to the origin version
 
-sp_poly <- SpatialPolygons(list(Polygons(list(Polygon(as.matrix(subset(rr,id=="18378")[,2:3]))), ID=1)))
-sp_poly_df <- SpatialPolygonsDataFrame(sp_poly, data=data.frame(ID=1))
-writeOGR(sp_poly_df, "chull", layer="chull", driver="ESRI Shapefile")
-
-nc <- st_read("chull/chull.shp")
-ch <- chull(temp)
-coords <-temp[c(ch, ch[1]),]
-plot(temp, pch=19)
-lines(coords, col="red")
-
-vor <- fortify(sp_poly_df)
-
-vor <- cbind(vor,rep(1,times=nrow(vor)))
-colnames(vor) = c("long","lat","order","hole","piece","id","group","frame")
-
-
-ggplot(vor, aes(x=long,y=lat))+
-  geom_polygon(aes(group=id))
-
-ggplot(nc) +
-  fte_theme()+
-  geom_sf()
-
-#use current time
-time = 0.5
-
-#apply reachable region function to all players
-rr<-apply(FUN=reach,MARGIN=1,X=cbind(df[,4:7],rep(time,nrow(df))),FUNC = fujsug)
-
-#format column names for bind_rows
-for ( i in 1:length(rr)){
-  colnames(rr[[i]]) <- c("x","y")
+transform <- function(ps,pt,pu){
+  r = sqrt((pt[1]-pu[1])^2+(pt[2]-pu[2])^2)
+  s = sqrt((pt[1]-ps[1])^2+(pt[2]-ps[2])^2)
+  theta = atan2(pu[2]-pt[2],pu[1]-pt[1])-atan2(pt[2]-ps[2],pt[1]-ps[1])
+  return(c(r*cos(theta),r*sin(theta)))
 }
-#create one data frame
-rr<-bind_rows(rr,.id='id')
 
-#convert to sf object
-df.sf <- rr %>%
-  st_as_sf( coords = c( "x", "y" ) )
+transform(c(1,1),c(2,1),c(4,3))
 
-#find convex hulls of each region
-hulls <- df.sf %>%
-  group_by( id ) %>%
-  summarise( geometry = st_combine( geometry ) ) %>%
-  st_convex_hull()
+ggplot(df,aes(x=speed))+
+  geom_histogram(binwidth=0.1)
 
-#list of all intersections between polygons in sf object hulls
-inter<-st_intersects(hulls)
 
-#initial list of two-way intersections
-tw_inter <- data.frame(x=c(),y=c())
+times <- seq(0.1,5,by=0.1)
+td <- 0.2
+player <- 5
+temp <- subset(df, id == player)
+A <- list()
+indices <- function(p,vt,tD){
+  return(c(floor(p[1]+53.5),floor(p[2]+35),vt,which(tD == times)))
+}
 
-# find all pairwise intersections
-for (i in 1:length(inter)){
-  for (j in 1:length(inter[[i]])){
-    temp <- data.frame(cbind(i,inter[[i]][j]))
-    rev <- data.frame(cbind(inter[[i]][j],i))
-    colnames(rev) <- c("i","V1")
-    bool <- nrow(merge(tw_inter, rev)) == 0
-    if (bool && temp$i[1]!=temp$V2[1]){
-      tw_inter <- rbind(tw_inter,temp)
+alg2 <- function(tD){
+  B <- rep(list(matrix(0,nrow=70,ncol=107)),30)
+  for (i in 1:1){
+    
+    for (j in 3:nrow(temp)){
+      pt <- c(df[(j),4],df[(j),5])
+      ps <- c(df[(j-2),4],df[(j-2),5])
+      gap <- tD/0.1
+      pu <- c(df[(j+gap),4],df[(j+gap),5])
+      p <- transform(ps,pt,pu)
+      vt <- as.numeric(df[j,9])
+      abcd <- indices(p,vt,tD)
+      
+      if (!("FALSE" %in% as.list(abcd>0)) && abcd[1] <=107 && abcd[2] <=70){
+        #print(paste(j,abcd[1],abcd[2],abcd[3],abcd[4],sep=" "))
+        B[abcd[3]][[1]][abcd[2],abcd[1]] <- B[abcd[3]][[1]][abcd[2],abcd[1]] + 1  
+      }
+      
     }
-  }
+  }  
+  return(B)
 }
 
-#find partial regions
-temp <- hulls
-if (nrow(tw_inter)>0){
-  for (k in 1:nrow(tw_inter)){
-    diff1<- st_difference(temp$geometry[[tw_inter$i[[k]]]],hulls$geometry[[tw_inter$V2[[k]]]])
-    diff2 <- st_difference(temp$geometry[[tw_inter$V2[[k]]]],hulls$geometry[[tw_inter$i[[k]]]])
-    temp$geometry[[tw_inter$i[[k]]]] <- diff1
-    temp$geometry[[tw_inter$V2[[k]]]] <- diff2
-  }
+for (i in 1:length(times)){
+  print(i)
+  A[i][[1]]<-alg2(times[i])
 }
-partialRR <- c(partialRR,temp)
+
+B<-alg2(0.2)
+
+probP <- function(tD,ps,pt,p,v){
+  abcd <- indices(transform(ps,pt,p),v,tD)
+  return((A[abcd[4]][[1]][abcd[3]][[1]][abcd[2],abcd[1]])/(sum(colSums(A[abcd[4]][[1]][abcd[3]][[1]]))))
+}
+
+j = 10
+tD=0.6
+pt <- c(df[(j),4],df[(j),5])
+ps <- c(df[(j-2),4],df[(j-2),5])
+gap <- tD/0.1
+pu <- c(df[(j+gap),4],df[(j+gap),5])
+p<-transform(ps,pt,pu)
+abcd <- indices(transform(ps,pt,pu),3,tD)
+probP(tD,ps,pt,pu,6)
