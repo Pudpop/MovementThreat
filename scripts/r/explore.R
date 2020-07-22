@@ -5,6 +5,7 @@ data = read.csv('../groundtruth.csv')
 
 #general
 library(dplyr) 
+library(tidyverse)
 
 #plots
 library(ggplot2)
@@ -13,6 +14,7 @@ library(RColorBrewer)
 library(ggpubr)
 library(mapview)
 library(wesanderson)
+library(extrafont)
 
 #spatial
 library(sf)
@@ -378,7 +380,7 @@ fte_theme <- function(font = c("serif","serif"), pal = brewer.pal("Greys",n=9),s
     theme(plot.margin = unit(c(0.35, 0.2, 0.3, 0.35), "cm"))
 }
 
-green = "#228C22"
+green = "#33a02c"
 
 soccerPitch <- function(){
   ggplot()+
@@ -420,8 +422,8 @@ ggplot()+
   geom_point(data = cent,
              aes(x=centX+53.5,y=centY+35,colour=team,fill=team),
              size=5)+
-  geom_polygon(data = filter(data_hull, team == 'h'), aes(x.mean+53.5, y.mean+35),fill=pal[4], alpha = 0.35) +
-  geom_polygon(data = filter(data_hull, team == 'a'), aes(x.mean+53.5, y.mean+35),fill=pal[2], alpha = 0.35) +
+  geom_polygon(data = filter(data_hull, team == 'h'), aes(x.mean+53.5, y.mean+35),fill=pal[5], alpha = 0.35) +
+  geom_polygon(data = filter(data_hull, team == 'a'), aes(x.mean+53.5, y.mean+35),fill=pal[1], alpha = 0.35) +
   #perimeter
   geom_rect(aes(xmax=107,xmin=0,ymax=70,ymin=0),fill=NA,color="grey")+
   # centre circle
@@ -445,16 +447,17 @@ ggplot()+
   # goals
   geom_rect(aes(x=NULL,y=NULL,xmin = -2, xmax = 0, ymin = (widthPitch/2) - 3.66, ymax = (widthPitch/2) + 3.66), fill = NA, col = colPitch, lwd = lwd) +
   geom_rect(aes(x=NULL,y=NULL,xmin = lengthPitch, xmax = lengthPitch + 2, ymin = (widthPitch/2) - 3.66, ymax = (widthPitch/2) + 3.66), fill = NA, col = colPitch, lwd = lwd)+
-  geom_hline(yintercept=cent$centY[1])+
+  #geom_hline(yintercept=cent$centY[1])+
   coord_fixed()+
-  scale_color_manual(values=pal[c(1,5,3)])+
+  scale_color_manual(values=pal[c(2,11,6)])+
+  scale_fill_manual(values=pal[c(2,11,6)])+
   scale_x_continuous(breaks = seq(-200,-180,by=10)) +
   scale_y_continuous(breaks = seq(-200,-180,by=10)) +
   fte_theme(font = c("Segoe UI Light","Segoe UI"))+
   theme(panel.background=element_rect(fill=green, color=green)) +
   theme(plot.background=element_rect(fill=green, color=green)) +
   theme(panel.border=element_rect(color=green)) +
-  labs(title="Average Positions",x="",y="")
+  labs(title="Average Positions and Convex Hull",x="",y="")
 
 wDF <- df[,c(2,2,1,4,5)]
 wDF$id<-as.numeric(wDF$id)

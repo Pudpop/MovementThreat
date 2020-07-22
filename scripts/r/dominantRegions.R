@@ -51,6 +51,9 @@ data = read.csv('groundtruth.csv')
     df$y<-as.numeric(df$y)
     df$vX<-as.numeric(df$vX)
     df$vY<-as.numeric(df$vY)
+    df$speed <- sqrt(df$vX^2+df$vY^2)
+    df$speedGroup <- as.factor(as.numeric(cut(df$speed, seq(0,3,by=0.1),include.lowest = T)))
+    df$time <- (60/100)*as.numeric(df$frame)
 
 #angles using for
 angles <- as.matrix(seq(from = 0, to = 360, by = 6))
@@ -62,7 +65,7 @@ taki <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,a = 4.2){
 
 
 #fujimura, needs to be reweighted
-fujsug <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,alpha = 1.3,vM = 8,scale = 1){
+fujsug <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,alpha = 1.3,vM = 2.948,scale = 1){
   v[1] = scale * v[1]
   v[2] = scale * v[2]
   newX <- origin[1]+(vM*cos(angle)*(t-(1-exp(alpha*t))/(alpha))+v[1]*(1-exp(alpha*t))/(alpha))
@@ -110,7 +113,7 @@ for (l in  1:length(times)){
   time = times[[l]]
 
   #apply reachable region function to all players
-  rr<-apply(FUN=reach,MARGIN=1,X=cbind(df[,4:7],rep(time,nrow(df))),FUNC = fujsug)
+  rr<-apply(FUN=reach,MARGIN=1,X=cbind(df[1:23,4:7],rep(time,nrow(df[1:23,]))),FUNC = fujsug)
 
   #format column names for bind_rows
   for ( i in 1:length(rr)){
@@ -270,29 +273,24 @@ hulls <- df.sf %>%
 
 plot(hulls)
 
+##Brefeld
 
-#other
-mapview::mapview( df.sf )
+##transform the datapoint to the origin version
 
-sp_poly <- SpatialPolygons(list(Polygons(list(Polygon(as.matrix(subset(rr,id=="18378")[,2:3]))), ID=1)))
-sp_poly_df <- SpatialPolygonsDataFrame(sp_poly, data=data.frame(ID=1))
-writeOGR(sp_poly_df, "chull", layer="chull", driver="ESRI Shapefile")
+transform <- function(ps,pt,pu){
+  r = sqrt((pt[1]-pu[1])^2+(pt[2]-pu[2])^2)
+  s = sqrt((pt[1]-ps[1])^2+(pt[2]-ps[2])^2)
+  theta = atan2(pu[2]-pt[2],pu[1]-pt[1])-atan2(pt[2]-ps[2],pt[1]-ps[1])
+  return(rbind(c(-s,0),c(r*cos(theta),r*sin(theta))))
+}
 
-nc <- st_read("chull/chull.shp")
-ch <- chull(temp)
-coords <-temp[c(ch, ch[1]),]
-plot(temp, pch=19)
-lines(coords, col="red")
+transform(c(1,1),c(2,1),c(4,3))
 
-vor <- fortify(sp_poly_df)
-
-vor <- cbind(vor,rep(1,times=nrow(vor)))
-colnames(vor) = c("long","lat","order","hole","piece","id","group","frame")
+ggplot(df,aes(x=speed))+
+  geom_histogram(binwidth=0.1)
 
 
-ggplot(vor, aes(x=long,y=lat))+
-  geom_polygon(aes(group=id))
 
-ggplot(nc) +
-  fte_theme()+
-  geom_sf()
+probP <- function(tD,p,pt,v){
+  
+}
