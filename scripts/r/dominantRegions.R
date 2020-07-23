@@ -23,7 +23,7 @@ pal <- wes_palette("Zissou1", 5, type = "discrete")
 #format data as necessary
 
     #choose number of frames to use
-    frames = 1
+    frames = nrow(data)
 
     #intialize data frame
     df = data.frame(frame = as.integer(),
@@ -50,11 +50,11 @@ pal <- wes_palette("Zissou1", 5, type = "discrete")
     }
 
     #clean up
-    df$x<-as.numeric(df$x)+53.5
-    df$y<-as.numeric(df$y)+35
+    df$x<-as.numeric(df$x)
+    df$y<-as.numeric(df$y)
     df$vX<-as.numeric(df$vX)
     df$vY<-as.numeric(df$vY)
-    df$speed <- sqrt((vX)^2+(vY)^2)
+    df$speed <- sqrt((df$vX)^2+(df$vY)^2)
     df$speedGroup <- as.numeric(cut(df$speed, seq(0,3,by=0.1),include.lowest = T))
     df$time <- as.numeric(df$frame)/10
 
