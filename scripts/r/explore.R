@@ -5,6 +5,7 @@ data = read.csv('../groundtruth.csv')
 
 #general
 library(dplyr) 
+library(tidyverse)
 
 #plots
 library(ggplot2)
@@ -13,13 +14,16 @@ library(RColorBrewer)
 library(ggpubr)
 library(mapview)
 library(wesanderson)
+library(extrafont)
 
 #spatial
 library(sf)
 library(sp)
 library(rgdal)
 
-pal <- wes_palette("Zissou1", 5, type = "discrete")
+pal <- c("#A6CEE3","#1F78B4","#b2df8a","#33a02c",
+         "#fb9a99","#fb9a99","#fdbf6f","#ff7f00",
+         "#cab2d6","#6a3d9a","#ffff99")
 
 #format data as necessary
 
@@ -376,7 +380,40 @@ fte_theme <- function(font = c("serif","serif"), pal = brewer.pal("Greys",n=9),s
     theme(plot.margin = unit(c(0.35, 0.2, 0.3, 0.35), "cm"))
 }
 
-green = "#228C22"
+green = "#33a02c"
+
+soccerPitch <- function(){
+  ggplot()+
+    fte_theme(font = c("Segoe UI Light","Segoe UI"))+
+    theme(panel.background=element_rect(fill=green, color=green)) +
+    theme(plot.background=element_rect(fill=green, color=green)) +
+    theme(panel.border=element_rect(color=green)) +
+    scale_x_continuous(breaks = seq(-200,-180,by=10)) +
+    scale_y_continuous(breaks = seq(-200,-180,by=10)) +
+    #perimeter
+    geom_rect(aes(xmax=107,xmin=0,ymax=70,ymin=0),fill=NA,color="grey")+
+    # centre circle
+    geom_circle(aes(x0 = lengthPitch/2, y0 = widthPitch/2, r = 9.15), col = colPitch, lwd = lwd) +
+    # kick off spot
+    geom_circle(aes(x0 = lengthPitch/2, y0 = widthPitch/2, r = 0.25), fill = colPitch, col = colPitch, lwd = lwd) +
+    # halfway line
+    geom_segment(aes(x = lengthPitch/2, y = 0, xend = lengthPitch/2, yend = widthPitch), col = colPitch, lwd = lwd) +
+    # penalty arcs
+    geom_arc(aes(x0= 11, y0 = widthPitch/2, r = 9.15, start = pi/2 + 0.9259284, end = pi/2 - 0.9259284), col = colPitch, lwd = lwd) +
+    geom_arc(aes(x0 = lengthPitch - 11, y0 = widthPitch/2, r = 9.15, start = pi/2*3 - 0.9259284, end = pi/2*3 + 0.9259284), col = colPitch, lwd = lwd) +
+    # penalty areas
+    geom_rect(aes(x=NULL,y=NULL,xmin = 0, xmax = 16.5, ymin = widthPitch/2 - 20.15, ymax = widthPitch/2 + 20.15), fill = NA, col = colPitch, lwd = lwd) +
+    geom_rect(aes(x=NULL,y=NULL,xmin = lengthPitch - 16.5, xmax = lengthPitch, ymin = widthPitch/2 - 20.15, ymax = widthPitch/2 + 20.15), fill = NA, col = colPitch, lwd = lwd) +
+    # penalty spots
+    geom_circle(aes(x0 = 11, y0 = widthPitch/2, r = 0.25), fill = colPitch, col = colPitch, lwd = lwd) +
+    geom_circle(aes(x0 = lengthPitch - 11, y0 = widthPitch/2, r = 0.25), fill = colPitch, col = colPitch, lwd = lwd) +
+    # six yard boxes
+    geom_rect(aes(x=NULL,y=NULL,xmin = 0, xmax = 5.5, ymin = (widthPitch/2) - 9.16, ymax = (widthPitch/2) + 9.16), fill = NA, col = colPitch, lwd = lwd) +
+    geom_rect(aes(x=NULL,y=NULL,xmin = lengthPitch - 5.5, xmax = lengthPitch, ymin = (widthPitch/2) - 9.16, ymax = (widthPitch/2) + 9.16), fill = NA, col = colPitch, lwd = lwd) +
+    # goals
+    geom_rect(aes(x=NULL,y=NULL,xmin = -2, xmax = 0, ymin = (widthPitch/2) - 3.66, ymax = (widthPitch/2) + 3.66), fill = NA, col = colPitch, lwd = lwd) +
+    geom_rect(aes(x=NULL,y=NULL,xmin = lengthPitch, xmax = lengthPitch + 2, ymin = (widthPitch/2) - 3.66, ymax = (widthPitch/2) + 3.66), fill = NA, col = colPitch, lwd = lwd)
+}
 
 ggplot()+
   geom_point(data = pos,
@@ -385,8 +422,8 @@ ggplot()+
   geom_point(data = cent,
              aes(x=centX+53.5,y=centY+35,colour=team,fill=team),
              size=5)+
-  geom_polygon(data = filter(data_hull, team == 'h'), aes(x.mean+53.5, y.mean+35),fill=pal[4], alpha = 0.35) +
-  geom_polygon(data = filter(data_hull, team == 'a'), aes(x.mean+53.5, y.mean+35),fill=pal[2], alpha = 0.35) +
+  geom_polygon(data = filter(data_hull, team == 'h'), aes(x.mean+53.5, y.mean+35),fill=pal[5], alpha = 0.35) +
+  geom_polygon(data = filter(data_hull, team == 'a'), aes(x.mean+53.5, y.mean+35),fill=pal[1], alpha = 0.35) +
   #perimeter
   geom_rect(aes(xmax=107,xmin=0,ymax=70,ymin=0),fill=NA,color="grey")+
   # centre circle
@@ -410,19 +447,39 @@ ggplot()+
   # goals
   geom_rect(aes(x=NULL,y=NULL,xmin = -2, xmax = 0, ymin = (widthPitch/2) - 3.66, ymax = (widthPitch/2) + 3.66), fill = NA, col = colPitch, lwd = lwd) +
   geom_rect(aes(x=NULL,y=NULL,xmin = lengthPitch, xmax = lengthPitch + 2, ymin = (widthPitch/2) - 3.66, ymax = (widthPitch/2) + 3.66), fill = NA, col = colPitch, lwd = lwd)+
-  geom_hline(yintercept=cent$centY[1])+
+  #geom_hline(yintercept=cent$centY[1])+
   coord_fixed()+
-  scale_color_manual(values=pal[c(1,5,3)])+
+  scale_color_manual(values=pal[c(2,11,6)])+
+  scale_fill_manual(values=pal[c(2,11,6)])+
   scale_x_continuous(breaks = seq(-200,-180,by=10)) +
   scale_y_continuous(breaks = seq(-200,-180,by=10)) +
   fte_theme(font = c("Segoe UI Light","Segoe UI"))+
   theme(panel.background=element_rect(fill=green, color=green)) +
   theme(plot.background=element_rect(fill=green, color=green)) +
   theme(panel.border=element_rect(color=green)) +
-  labs(title="Average Positions",x="",y="")
+  labs(title="Average Positions and Convex Hull",x="",y="")
 
 wDF <- df[,c(2,2,1,4,5)]
 wDF$id<-as.numeric(wDF$id)
 wDF$id.1<-as.numeric(wDF$id.1)
 wDF$frame<-as.numeric(wDF$frame)
 write.table(wDF,"small.txt",sep=";",row.names = F,col.names=F)
+
+#plot individual paths
+soccerPitch()+
+  geom_path(data=subset(df,frame %in% 1:2000 & team == "h"),
+            aes(x=x+53.5,y=y+35,colour=id),
+            lwd = 1) + 
+  scale_color_manual(values=pal)+
+  fte_theme() +
+  coord_fixed()
+
+soccerPitch()+
+  geom_path(data=subset(df,as.numeric(frame)/8 == floor(as.numeric(frame)/8)& id %in% c(4,5,14,15)),
+            aes(x=x+53.5,y=y+35,colour=id,linetype=team),
+            lwd = 1) + 
+  scale_color_manual(values=pal)+
+  fte_theme() +
+  coord_fixed()
+
+
