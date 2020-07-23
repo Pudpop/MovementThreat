@@ -1,3 +1,11 @@
+<<<<<<< HEAD
+=======
+#set wd to where data is
+setwd('C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/groundtruth')
+
+data = read.csv('../groundtruth.csv')
+
+>>>>>>> 1d09c2242dd292e7a4bd902f7a85a6c1972ca15e
 #general
   library(dplyr)
 
@@ -16,6 +24,7 @@
 pal <- wes_palette("Zissou1", 5, type = "discrete")
 
 #format data as necessary
+<<<<<<< HEAD
     #set wd to where data is
     setwd('C:/Users/David/OneDrive/Documents/Work/Thesis/github/data')
 
@@ -28,6 +37,39 @@ pal <- wes_palette("Zissou1", 5, type = "discrete")
     #clean up
     df$x<-as.numeric(df$x)+53.5
     df$y<-as.numeric(df$y)+35
+=======
+
+    #choose number of frames to use
+    frames = nrow(data)
+
+    #intialize data frame
+    df = data.frame(frame = as.integer(),
+                    id = as.integer(),
+                    team = as.character(),
+                    x=as.numeric(),
+                    y=as.numeric(),
+                    vX=as.numeric(),
+                    vY=as.numeric())
+
+    #add data for each frame
+    for (i in 1:frames){
+      temp = as.data.frame(matrix(data[i,], ncol=8, byrow=TRUE))
+      temp[1,1:4] = temp[1,5:8]
+      temp = temp[,1:4]
+      temp = cbind(rep(i,23),seq(1,23),c('b',rep('h',11),rep('a',11)),temp)
+      colnames(temp) =  c('frame','id',"team",'x','y','vX','vY')
+      if (i > 1){
+        df = rbind(df,temp)
+      }
+      else{
+        df = temp
+      }
+    }
+
+    #clean up
+    df$x<-as.numeric(df$x)
+    df$y<-as.numeric(df$y)
+>>>>>>> 1d09c2242dd292e7a4bd902f7a85a6c1972ca15e
     df$vX<-as.numeric(df$vX)
     df$vY<-as.numeric(df$vY)
     df$speed <- sqrt((df$vX)^2+(df$vY)^2)
@@ -229,8 +271,13 @@ for (i in 2:length(temp)){
   temp2 <- cbind(as.data.frame(temp[[i]][[1]]),rep(1,length(temp[[i]][[1]])))
   colnames(temp2) <- c("x","y","id")
   combined <- rbind(combined,temp2)
+<<<<<<< HEAD
 }
 }
+=======
+}
+}
+>>>>>>> 1d09c2242dd292e7a4bd902f7a85a6c1972ca15e
 ##
   for (i in 2:23){
     temp<-st_cast(st_sfc(synthesize(i,partialRR)),"POLYGON")
@@ -308,6 +355,7 @@ transform <- function(ps,pt,pu){
   return(c(r*cos(theta),r*sin(theta)))
 }
 
+<<<<<<< HEAD
 #ggplot(df,aes(x=speed))+
 #  geom_histogram(binwidth=0.1)
 
@@ -316,11 +364,24 @@ times <- seq(0.1,5,by=0.1)
 td <- 0.2
 player <- 5
 temp <- subset(match, !(player %in% c(1,2,13)))
+=======
+transform(c(1,1),c(2,1),c(4,3))
+
+ggplot(df,aes(x=speed))+
+  geom_histogram(binwidth=0.1)
+
+
+times <- seq(0.1,5,by=0.1)
+td <- 0.2
+player <- 5
+temp <- subset(df, id == player)
+>>>>>>> 1d09c2242dd292e7a4bd902f7a85a6c1972ca15e
 A <- list()
 indices <- function(p,vt,tD){
   return(c(floor(p[1]+53.5),floor(p[2]+35),vt,which(tD == times)))
 }
 
+<<<<<<< HEAD
 alg2 <- function(tD,df = temp){
   B <- rep(list(matrix(0,nrow=70,ncol=107)),30)#
   for (i in 1:1){
@@ -341,6 +402,28 @@ alg2 <- function(tD,df = temp){
 
     }
   }
+=======
+alg2 <- function(tD){
+  B <- rep(list(matrix(0,nrow=70,ncol=107)),30)
+  for (i in 1:1){
+    
+    for (j in 3:nrow(temp)){
+      pt <- c(df[(j),4],df[(j),5])
+      ps <- c(df[(j-2),4],df[(j-2),5])
+      gap <- tD/0.1
+      pu <- c(df[(j+gap),4],df[(j+gap),5])
+      p <- transform(ps,pt,pu)
+      vt <- as.numeric(df[j,9])
+      abcd <- indices(p,vt,tD)
+      
+      if (!("FALSE" %in% as.list(abcd>0)) && abcd[1] <=107 && abcd[2] <=70){
+        #print(paste(j,abcd[1],abcd[2],abcd[3],abcd[4],sep=" "))
+        B[abcd[3]][[1]][abcd[2],abcd[1]] <- B[abcd[3]][[1]][abcd[2],abcd[1]] + 1  
+      }
+      
+    }
+  }  
+>>>>>>> 1d09c2242dd292e7a4bd902f7a85a6c1972ca15e
   return(B)
 }
 
@@ -356,6 +439,7 @@ probP <- function(tD,ps,pt,p,v){
   return((A[abcd[4]][[1]][abcd[3]][[1]][abcd[2],abcd[1]])/(sum(colSums(A[abcd[4]][[1]][abcd[3]][[1]]))))
 }
 
+<<<<<<< HEAD
 j = 1000
 tD=0.6
 pt <- c(df[(j),9],df[(j),10])
@@ -376,3 +460,14 @@ ggplot(idxs, aes(col,row))+
   stat_bin2d(bins = 20,alpha=0.4)+
   #geom_point(data=as.data.frame(cbind(rbind(ps,pt,pu),c("ps","pt","pu"))),aes(x=V1,y=V2,color=V3))+
   coord_fixed()
+=======
+j = 10
+tD=0.6
+pt <- c(df[(j),4],df[(j),5])
+ps <- c(df[(j-2),4],df[(j-2),5])
+gap <- tD/0.1
+pu <- c(df[(j+gap),4],df[(j+gap),5])
+p<-transform(ps,pt,pu)
+abcd <- indices(transform(ps,pt,pu),3,tD)
+probP(tD,ps,pt,pu,6)
+>>>>>>> 1d09c2242dd292e7a4bd902f7a85a6c1972ca15e
