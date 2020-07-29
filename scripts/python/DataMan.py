@@ -57,7 +57,7 @@ for matchNo,filename in enumerate(os.listdir(direc)):
     data.insert(0,'matchNo',matchNo) 
     
     
-    with open('C:/Users/David/Desktop/test.csv', 'a') as f:
+    with open('C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data/all_games.csv', 'a') as f:
         data.to_csv(f, header=False)    
     #add to other data
     #df = pd.concat([df,data])
