@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 
-direc = "C:/Users/David/OneDrive/Documents/Work/Thesis/github/scripts/python/groundtruth"
+direc = "C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data/groundtruth"
 
 #craete list of column names
 vars = []
@@ -32,8 +32,8 @@ for matchNo,filename in enumerate(os.listdir(direc)):
     data = pd.read_csv(direc + "/" + filename)
     
     #add in team names
-    data.insert(4,'leftteam',filename.split('-')[1])
-    data.insert(5,'rightteam',filename.split('-')[3])
+    data.insert(4,'leftteam',filename.split('-')[1].split('_')[0])
+    data.insert(5,'rightteam',filename.split('-')[3].split('_')[0])
     
     #add in dummy sesnsor values for the ball
     data.insert(10,'dummy1',0)
@@ -56,8 +56,11 @@ for matchNo,filename in enumerate(os.listdir(direc)):
     #add matchNo
     data.insert(0,'matchNo',matchNo) 
     
+    
+    with open('C:/Users/David/Desktop/test.csv', 'a') as f:
+        data.to_csv(f, header=False)    
     #add to other data
-    df = pd.concat([df,data])
+    #df = pd.concat([df,data])
     
 
-df.to_csv(path_or_buf = 'C:/Users/David/Desktop/test.csv',index=False)
+#df.to_csv(path_or_buf = 'C:/Users/David/Desktop/test.csv',index=False)
