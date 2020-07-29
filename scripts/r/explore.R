@@ -382,16 +382,35 @@ fte_theme <- function(font = c("serif","serif"), pal = brewer.pal("Greys",n=9),s
 
 green = "#33a02c"
 
-soccerPitch <- function(){
+soccerPitch <- function(scale=c(-200,-180,10,-200,-180,10),linecolor = "grey85"){
+  green = "#FFFFFF"
+  lengthPitch = 107
+  widthPitch = 70
+  arrow = c("none", "r", "l")
+  title = "Voronoi Test"
+  subtitle = "Test"
+  
+  fill1 <- "#008000"
+  fill2 <- "#328422"
+  colPitch <- linecolor
+  arrowCol <- "white"
+  colText <- "white"
+  
+  lwd <- 0.5
+  border <- c(10, 6, 5, 6)
+  
+  # mowed grass lines
+  lines <- (lengthPitch + border[2] + border[4]) / 13
+  boxes <- data.frame(start = lines * 0:12 - border[4], end = lines * 1:13 - border[2])[seq(2, 12, 2),]
   ggplot()+
     fte_theme(font = c("Segoe UI Light","Segoe UI"))+
     theme(panel.background=element_rect(fill=green, color=green)) +
     theme(plot.background=element_rect(fill=green, color=green)) +
     theme(panel.border=element_rect(color=green)) +
-    scale_x_continuous(breaks = seq(-200,-180,by=10)) +
-    scale_y_continuous(breaks = seq(-200,-180,by=10)) +
+      scale_x_continuous(breaks = seq(scale[1],scale[2],by=scale[3])) +
+      scale_y_continuous(breaks = seq(scale[4],scale[5],by=scale[6])) +
     #perimeter
-    geom_rect(aes(xmax=107,xmin=0,ymax=70,ymin=0),fill=NA,color="grey")+
+    geom_rect(aes(xmax=107,xmin=0,ymax=70,ymin=0),fill=NA,color=linecolor)+
     # centre circle
     geom_circle(aes(x0 = lengthPitch/2, y0 = widthPitch/2, r = 9.15), col = colPitch, lwd = lwd) +
     # kick off spot
