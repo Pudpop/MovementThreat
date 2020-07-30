@@ -41,8 +41,8 @@ pal <- c("#A6CEE3","#1F78B4","#b2df8a","#33a02c",
     df$vY<-as.numeric(df$vY)
     df$speed <- sqrt((df$vX)^2+(df$vY)^2)
     df$state <- as.factor(df$state)
-    df$speedGroup <- as.numeric(cut(df$speed, c(0,0.03,0.073,0.13,0.24,0.48,0.6),include.lowest = T))
-    #df$speedGroup <- as.numeric(cut(df$speed, c(seq(0,0.1,by=0.01),seq(0.15,0.6,by=0.05),10),include.lowest = T))
+    #df$speedGroup <- as.numeric(cut(df$speed, c(0,0.03,0.073,0.13,0.24,0.48,0.6),include.lowest = T))
+    df$speedGroup <- as.numeric(cut(df$speed, c(0,seq(0.001,0.55,by=0.05),10),include.lowest = T))
     df$time <- as.numeric(df$frame)/10
     df$team <- cut(df$player,c(0,1,12,23),include.lowest = T)
     levels(df$team) <- c("b","l","r")
@@ -283,7 +283,6 @@ soccerPitch() +
 ##Brefeld
 
 ##transform the datapoint to the origin version
-
 transform <- function(ps,pt,pu){
   r = sqrt((pt[1]-pu[1])^2+(pt[2]-pu[2])^2)
   s = sqrt((pt[1]-ps[1])^2+(pt[2]-ps[2])^2)
@@ -291,10 +290,12 @@ transform <- function(ps,pt,pu){
   return(c(r*cos(theta),r*sin(theta)))
 }
 
+##find indices of online updating matrices
 indices <- function(p,vt,tD){
   return(c(floor((p[1]+53.5)/2),floor((p[2]+35)/2),vt,which(tD == times)))
 }
 
+##algorithm to create matrices for online updating
 alg2 <- function(tD,data = temp){
   B <- rep(list(matrix(0,nrow=35,ncol=54)),length(levels(as.factor(data$speedGroup))))
   for (i in levels(as.factor(data$player))){
@@ -320,31 +321,60 @@ alg2 <- function(tD,data = temp){
   return(B)
 }
 
+##calculate the probability
 probP <- function(tD,ps,pt,p,v){
   abcd <- indices(transform(ps,pt,p),v,tD)
-  return((A[abcd[4]][[1]][abcd[3]][[1]][abcd[2],abcd[1]])/(sum(colSums(A[abcd[4]][[1]][abcd[3]][[1]]))))
+  return((A[abcd[4]][[1]][abcd[3]][[1]][abcd[1],abcd[2]])/(sum(colSums(A[abcd[4]][[1]][abcd[3]][[1]]))))
+}
+
+probPKDE <- function(tD,ps,pt,p,v){
+  
 }
 
 match = subset(df,matchID == 5)
 td <- 0.2
 times <- c(0.1,0.2,0.4,0.5,0.75,1)
 player <- 5
-temp <- subset(match, !(player %in% c(1,2,13)) & state == " play_on")
-temp <- subset(match, player == 14)
+temp <- subset(df, !(player %in% c(1,2,13)) & state == " play_on")
+
+temp <- subset(match, player == 14 & state == " play_on")
 
 td <- 0.2
 tD <- 5
 cl <- makeCluster(8)
 registerDoParallel(cl)
 St <- as.data.frame(foreach(i = ((td/0.1)+1):(nrow(temp)-tD/0.1),
-        .combine  = "rbind") %dopar% c(transform(c(temp$x[i-(td/0.1)],temp$y[i-(td/0.1)]),
-                                             c(temp$x[i],temp$y[i]),
-                                             c(temp$x[i+(tD/0.1)],temp$y[i+(tD/0.1)])),
-                                        temp$speed[i]),row.names = NULL)
+                            .combine  = "rbind") %dopar% c(transform(c(temp$x[i-(td/0.1)],temp$y[i-(td/0.1)]),
+                                                                     c(temp$x[i],temp$y[i]),
+                                                                     c(temp$x[i+(tD/0.1)],temp$y[i+(tD/0.1)])),
+                                                           temp$speedGroup[i]),row.names = NULL)
 stopCluster(cl)
 St$V4 <- temp[((td/0.1)+1):(nrow(temp)-tD/0.1),11]
 St$V5 <- temp[((td/0.1)+1):(nrow(temp)-tD/0.1),12]
-colnames(St) <- c("x","y","vX","vY","v")
+St$V6 <- 1
+colnames(St) <- c("x","y","vX","vY","v","speedGroup")
+
+for (i in 2:6){
+  temp <- subset(match, player == 14 & state == " play_on" & speedGroup == i)
+  
+  td <- 0.2
+  tD <- 5
+  cl <- makeCluster(8)
+  registerDoParallel(cl)
+  Stt <- as.data.frame(foreach(i = ((td/0.1)+1):(nrow(temp)-tD/0.1),
+                              .combine  = "rbind") %dopar% c(transform(c(temp$x[i-(td/0.1)],temp$y[i-(td/0.1)]),
+                                                                       c(temp$x[i],temp$y[i]),
+                                                                       c(temp$x[i+(tD/0.1)],temp$y[i+(tD/0.1)])),
+                                                             temp$speedGroup[i]),row.names = NULL)
+  stopCluster(cl)
+  Stt$V4 <- temp[((td/0.1)+1):(nrow(temp)-tD/0.1),11]
+  Stt$V5 <- temp[((td/0.1)+1):(nrow(temp)-tD/0.1),12]
+  Stt$v6 <- i
+  colnames(Stt) <- c("x","y","vX","vY","v","speedGroup")
+  
+  St <- rbind(St,Stt)
+}
+
 
 
 soccerPitch(scale = c(0,107,x_bin_width,0,70,y_bin_width),linecolor="black")+
@@ -355,7 +385,14 @@ soccerPitch(scale = c(0,107,x_bin_width,0,70,y_bin_width),linecolor="black")+
                          aes(x=x+53.5,y=y+35),
                          alpha=0.8,
                          bins=8,
-                         show.legend = F)
+                         show.legend = F,
+                         n=c(107,70))+
+  transition_states(
+    states = speedGroup,
+    transition_length = 0,
+    state_length = 0.3,
+    wrap = F
+  )
 
   
   soccerPitch()+
@@ -367,7 +404,20 @@ soccerPitch(scale = c(0,107,x_bin_width,0,70,y_bin_width),linecolor="black")+
                  arrow = arrow(length = unit(0.1, "cm")),
                  show.legend = F)
   
-A <- list()
+    
+iterations <- length(times)
+pb <- txtProgressBar(max = iterations, style = 3)
+progress <- function(n) setTxtProgressBar(pb, n)
+opts <- list(progress = progress)
+cl <- makeCluster(4)
+registerDoParallel(cl)
+A <- foreach( i = 1:iterations,
+              .combine = "c",
+              .options.snow = opts) %dopar% alg2(times[i])
+close(pb)
+stopCluster(cl)
+
+
 for (i in 1:length(times)){
   print(i)
   A[i][[1]]<-alg2(times[i])
@@ -392,17 +442,17 @@ for (i in 1:13){
   }
 }
 
-histDF <- data.frame(A[4][[1]][1][[1]])
+histDF <- data.frame(A[6])
 idxs <- which(histDF > 0, arr.ind=TRUE)
 idxs <- as.data.frame(idxs[ rep(1:nrow(idxs), histDF[histDF>0]), ])
-idxs$speed <- 1
+idxs$time <- 1
 for(i in 2:length(times)){
   #print(i)
-  histDF <- data.frame(A[4][[1]][i][[1]])
+  histDF <- data.frame(A[6+11*i])
   idxst <- which(histDF > 0, arr.ind=TRUE)
   if(nrow(idxst)>1){
     idxst <- as.data.frame(idxst[ rep(1:nrow(idxst), histDF[histDF>0]), ])
-    idxst$speed <- i
+    idxst$time <- i
     idxs <- rbind(idxs,idxst)
   }
 }
@@ -416,10 +466,10 @@ p<-soccerPitch()+
   fte_theme()+
   labs(x="",y="")+
   coord_fixed()+
-  geom_hex(data = idxs, mapping = aes(col,row),binwidth = 5,alpha=0.4,show.legend = F)+
+  geom_hex(data = idxs, mapping = aes(x=col,y=row),binwidth = 5,alpha=0.4,show.legend = F)+
   transition_states(
-    states = speed,
+    states = time,
     wrap = F
   )
 
-animate(p)
+animate(p,nframes=135)
