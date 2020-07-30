@@ -3,7 +3,6 @@
   library(foreach) #parallel
   library(doParallel) #parallel
   library(MASS) # kde
-  
 
 #plots
   library(ggplot2)
@@ -19,9 +18,13 @@
   library(rgdal)
   library(smoothr)
 
-pal <- c("#A6CEE3","#1F78B4","#b2df8a","#33a02c",
-         "#fb9a99","#fb9a99","#fdbf6f","#ff7f00",
-         "#cab2d6","#6a3d9a","#ffff99")
+#global constants
+  scale = 8.2/0.6
+  x_segmentation = 53.5
+  y_segmentation = 35
+  x_bin_width = 107/x_segmentation
+  y_bin_width = 70/y_segmentation
+
 
 #format data as necessary
     #set wd to where data is
@@ -140,13 +143,13 @@ synthesize <- function(index,parts=partialRR){
         huhp <- st_make_valid(st_difference(huh,sum))
         if (nrow(huhp)>0){
           if (nrow(p)>0){
-            p<-st_make_valid(st_union(p,huhp))  
+            p<-st_make_valid(st_union(p,huhp))
           }
           else{
             p <- huhp
           }
         }
-        
+
       }
     }
     else{
@@ -168,30 +171,30 @@ synthesize <- function(index,parts=partialRR){
 }
 
 partial <- function(time, one_frame){
-  
+
   #apply reachable region function to all players
   rr<-apply(FUN=reach,MARGIN=1,X=cbind(one_frame[,9:12],rep(time,22)))
-  
+
   #format column names for bind_rows
   for ( i in 1:length(rr)){
     colnames(rr[[i]]) <- c("x","y")
   }
   #create one data frame
   rr<-bind_rows(rr,.id='id')
-  
+
   #convert to sf object
   df.sf <- rr %>%
     st_as_sf( coords = c( "x", "y" ) )
-  
+
   #find convex hulls of each region
   hulls <- df.sf %>%
     group_by( id ) %>%
     summarise( geometry = st_combine( geometry ) ) %>%
     st_convex_hull()
-  
+
   #list of all intersections between polygons in sf object hulls
   inter<-st_intersects(hulls)
-  
+
   # find all pairwise intersections
   tw_inter <- inter %>%
     graph_from_data_frame(directed=F) %>%
@@ -200,7 +203,7 @@ partial <- function(time, one_frame){
   colnames(tw_inter) <- c("i","V2")
   tw_inter$i <- as.integer(tw_inter$i)
   tw_inter$V2 <- as.integer(tw_inter$V2)
-  
+
   #find partial regions
   temp <- hulls
   if (nrow(tw_inter)>0){
@@ -212,7 +215,7 @@ partial <- function(time, one_frame){
     }
   }
   return(temp)
-  
+
 }
 
 form_syn <- function(index){
@@ -226,13 +229,6 @@ form_syn <- function(index){
   combined2<- st_sf(id = rep(team,length(combined2)),geom = combined2)
   return(combined2)
 }
-
-#global constants
-scale = 8.2/0.6
-x_segmentation = 53.5
-y_segmentation = 35
-x_bin_width = 107/x_segmentation
-y_bin_width = 70/y_segmentation
 
 #list of times to be used
 times <- c(seq(0.1,2,by = 0.05),seq(2.1,4,by=0.1),seq(4.2,6,by=0.2))#,seq(0.6,2,by=0.1),seq(1.2,5,by=0.2),c(6,7))
@@ -248,8 +244,8 @@ one_frame = subset(match, player !=1 & frame == 100)
 #start <- Sys.time()
 cl <- makeCluster(8)
 registerDoParallel(cl)
-partialRR <- foreach(i = 1:length(times), 
-                     .combine="c", 
+partialRR <- foreach(i = 1:length(times),
+                     .combine="c",
                      .packages = c('dplyr','sf','igraph')) %dopar% partial(times[i],one_frame)
 stopCluster(cl)
 cl <- makeCluster(8)
@@ -259,7 +255,7 @@ combined2 <- foreach(i = 1:22,
                      .packages = c("dplyr","sf")) %dopar% form_syn(i)
 stopCluster(cl)
 #print(Sys.time()-start)
- 
+
 #smooth regions
 testSM <- smooth(combined2)
 
@@ -328,7 +324,7 @@ probP <- function(tD,ps,pt,p,v){
 }
 
 probPKDE <- function(tD,ps,pt,p,v){
-  
+
 }
 
 match = subset(df,matchID == 5)
@@ -356,7 +352,7 @@ colnames(St) <- c("x","y","vX","vY","v","speedGroup")
 
 for (i in 2:6){
   temp <- subset(match, player == 14 & state == " play_on" & speedGroup == i)
-  
+
   td <- 0.2
   tD <- 5
   cl <- makeCluster(8)
@@ -371,7 +367,7 @@ for (i in 2:6){
   Stt$V5 <- temp[((td/0.1)+1):(nrow(temp)-tD/0.1),12]
   Stt$v6 <- i
   colnames(Stt) <- c("x","y","vX","vY","v","speedGroup")
-  
+
   St <- rbind(St,Stt)
 }
 
@@ -381,7 +377,7 @@ soccerPitch(scale = c(0,107,x_bin_width,0,70,y_bin_width),linecolor="black")+
   coord_fixed()+
   labs(x="",y="")+
   scale_fill_discrete(type=brewer.pal("BuPu",n=8))+
-  geom_density_2d_filled(data = subset(St,x < 53.5 & x > -53.5 & y < 35 & y > -35), 
+  geom_density_2d_filled(data = subset(St,x < 53.5 & x > -53.5 & y < 35 & y > -35),
                          aes(x=x+53.5,y=y+35),
                          alpha=0.8,
                          bins=8,
@@ -394,7 +390,7 @@ soccerPitch(scale = c(0,107,x_bin_width,0,70,y_bin_width),linecolor="black")+
     wrap = F
   )
 
-  
+
   soccerPitch()+
     coord_fixed()+
     labs(x="",y="")+
@@ -403,8 +399,8 @@ soccerPitch(scale = c(0,107,x_bin_width,0,70,y_bin_width),linecolor="black")+
                  mapping=aes(x=x+53.5,xend = x+53.5+v*scale,yend=y+35+vY,y=y+35),
                  arrow = arrow(length = unit(0.1, "cm")),
                  show.legend = F)
-  
-    
+
+
 iterations <- length(times)
 pb <- txtProgressBar(max = iterations, style = 3)
 progress <- function(n) setTxtProgressBar(pb, n)
