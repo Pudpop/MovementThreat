@@ -64,3 +64,35 @@ for matchNo,filename in enumerate(os.listdir(direc)):
     
 
 #df.to_csv(path_or_buf = 'C:/Users/David/Desktop/test.csv',index=False)
+
+matchNo = 0
+filename = "20170904132709-Gliders2016_0-vs-HELIOS2016_0-groundtruth.csv"
+data = pd.read_csv(direc + "/" + filename)
+data.insert(4,'leftteam',filename.split('-')[1].split('_')[0])
+data.insert(5,'rightteam',filename.split('-')[3].split('_')[0])
+
+#add in dummy sesnsor values for the ball
+data.insert(10,'dummy1',0)
+data.insert(11,'dummy2',0)
+data.insert(12,'dummy3',0)
+data.insert(13,'dummy4',0) 
+
+#reaname columns, ignoring matchNo
+data.columns = all_cols[1:]
+
+#get rid of duplicates
+data = data.drop_duplicates(subset=cols[1:])
+
+#convert to long format using first 6 columns as, grouping other variables by their id after Vi
+data = pd.wide_to_long(data, i=cols[1:], j='id', stubnames=[f'V{i}' for i in range(1,9)], suffix='.*')
+
+#drop sensor data and reindex to format into row format
+data = (data.reset_index().drop(columns=[f'V{i}' for i in range(5,9)])).reset_index().sort_values(['id','time']) 
+
+#add matchNo
+data.insert(0,'matchNo',matchNo) 
+
+data.to_csv(path_or_buf = 'C:/Users/David/Desktop/test.csv',index=False)
+
+with open('C:/Users/David/Desktop/test.csv', 'a') as f:
+    data.to_csv(f, header=False)  
