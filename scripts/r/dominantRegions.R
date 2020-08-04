@@ -49,6 +49,12 @@
     df$time <- as.numeric(df$frame)/10
     df$team <- cut(df$player,c(0,1,12,23),include.lowest = T)
     levels(df$team) <- c("b","l","r")
+    df$final_score_left <- sub(".*?_", "", df$left_team)
+    df$final_score_right <- sub(".*?_", "", df$right_team)
+    df$left_team <- gsub("(.*)_.*", "\\1", df$left_team)
+    df$left_team <- as.factor(df$left_team)
+    df$right_team <- gsub("(.*)_.*", "\\1", df$right_team)
+    df$right_team <- as.factor(df$right_team)
 
 #taki's movement model function. Needs to be reweighted for velocities
 taki <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,a = 4.2*8.2/0.6,scale=8.2/0.6){
@@ -292,7 +298,7 @@ indices <- function(p,vt,tD){
 }
 
 ##algorithm to create matrices for online updating
-alg2 <- function(tD,data = temp){
+alg2 <- function(tD,td=5,data = temp){
   B <- rep(list(matrix(0,nrow=35,ncol=54)),length(levels(as.factor(data$speedGroup))))
   for (i in levels(as.factor(data$player))){
     df1 <- subset(data,player == i)
@@ -331,9 +337,92 @@ match = subset(df,matchID == 5)
 td <- 0.2
 times <- c(0.1,0.2,0.4,0.5,0.75,1)
 player <- 5
-temp <- subset(df, !(player %in% c(1,2,13)) & state == " play_on")
-
+temp <- subset(match, !(player %in% c(1,2,13)) & state == " play_on")
 temp <- subset(match, player == 14 & state == " play_on")
+
+findTriplets<-function(data = temp,timesList =times){
+  preGap <- td/0.1
+  rows = nrow(data)
+  triplets <- data.frame()
+  for (time in  times){
+    gap = time/0.1
+    if (nrow(triplets) == 0){
+      psx <- data[1:(rows-preGap-gap),]$x
+      psy <- data[1:(rows-preGap-gap),]$y
+      ptx <- data[(preGap+1):(rows-gap),]$x
+      pty <- data[(preGap+1):(rows-gap),]$y
+      pux <- data[(preGap+gap+1):rows,]$x
+      puy <- data[(preGap+gap+1):rows,]$y
+      speed <- data[(preGap+1):(rows-gap),]$speed
+      speedGroup <- data[(preGap+1):(rows-gap),]$speedGroup
+      time <- rep(time,length(psx))
+      triplets <- as.data.frame(cbind(psx,psy,ptx,pty,pux,puy,speed,speedGroup,time))
+    }
+    else{
+      psx <- data[1:(rows-preGap-gap),]$x
+      psy <- data[1:(rows-preGap-gap),]$y
+      ptx <- data[(preGap+1):(rows-gap),]$x
+      pty <- data[(preGap+1):(rows-gap),]$y
+      pux <- data[(preGap+gap+1):rows,]$x
+      puy <- data[(preGap+gap+1):rows,]$y
+      speed <- data[(preGap+1):(rows-gap),]$speed
+      speedGroup <- data[(preGap+1):(rows-gap),]$speedGroup
+      time <- rep(time,length(psx))
+      temp <- as.data.frame(cbind(psx,psy,ptx,pty,pux,puy,speed,speedGroup,time))
+      triplets<-rbind(triplets,temp)
+    }
+  }
+  return(triplets)
+}
+
+filterDataTriplets <- function(data = subset(df,state==" play_on"),timesList = seq(0.1,2,by=0.1)){
+  all_triplets_all_players <- data.frame(matchID = numeric(0),team = character(0),player= numeric(0),
+                                         psx= numeric(0),psy= numeric(0),ptx= numeric(0),pty= numeric(0),
+                                         pux= numeric(0),puy= numeric(0),speed= numeric(0),
+                                         speedGroup= numeric(0),time= numeric(0))
+  for (team in unique(c(levels(data$right_team),levels(data$left_team)))){
+    print(team)
+    team_temp <- rbind(data[data$left_team==team,],data[data$right_team==team,])
+    for (match in levels(as.factor(team_temp$matchID))){
+      print(match)
+      match_temp <- subset(team_temp,matchID == match)
+      players = seq(13,23)
+      if (match_temp[1,]$left_team == team){
+        players = seq(2,12)
+      }
+      for (playerID in players){
+        player_temp <- subset(match_temp,player == playerID)
+        player_triplets <- findTriplets(data = player_temp)
+        player_triplets$matchID <- as.numeric(match)
+        player_triplets$team <- team
+        player_triplets$player <- ((as.numeric(playerID)-1)%%11)+1
+        player_triplets <- player_triplets[,c(seq(10,12),seq(1,9))]
+        all_triplets_all_players <- rbind(all_triplets_all_players,
+                                          player_triplets)
+      }
+    }
+  }
+  return(all_triplets_all_players)
+}
+
+test <- filterDataTriplets()
+temp <- subset(test[test$team == "HELIOS2016",],player==5)
+
+td <- 0.2
+tD <- 5
+cl <- makeCluster(8)
+registerDoParallel(cl)
+St <- as.data.frame(foreach(row = iter(temp,by='row'),
+                            .combine  = "rbind") %dopar% c(transform(c(row[[4]],row[[5]]),
+                                                                     c(row[[6]],row[[7]]),
+                                                                     c(row[[8]],row[[9]])),
+                                                           row[[11]],
+                                                           row[[12]]),row.names = NULL)
+stopCluster(cl)
+#St$V4 <- temp[((td/0.1)+1):(nrow(temp)-tD/0.1),11]
+#St$V5 <- temp[((td/0.1)+1):(nrow(temp)-tD/0.1),12]
+St$V6 <- 1
+colnames(St) <- c("x","y","speedGroup","tD","huh")
 
 td <- 0.2
 tD <- 5
@@ -377,7 +466,7 @@ soccerPitch(scale = c(0,107,x_bin_width,0,70,y_bin_width),linecolor="black")+
   coord_fixed()+
   labs(x="",y="")+
   scale_fill_discrete(type=brewer.pal("BuPu",n=8))+
-  geom_density_2d_filled(data = subset(St,x < 53.5 & x > -53.5 & y < 35 & y > -35),
+  geom_density_2d_filled(data = subset(St,x < 53.5 & x > -53.5 & y < 35 & y > -35 & tD == 5),
                          aes(x=x+53.5,y=y+35),
                          alpha=0.8,
                          bins=8,
