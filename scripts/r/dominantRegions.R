@@ -3,6 +3,7 @@
   library(foreach) #parallel
   library(doParallel) #parallel
   library(MASS) # kde
+  library(stringr)
 
 #plots
   library(ggplot2)
@@ -24,37 +25,6 @@
   y_segmentation = 35
   x_bin_width = 107/x_segmentation
   y_bin_width = 70/y_segmentation
-
-
-#format data as necessary
-    #set wd to where data is
-    setwd('C:/Users/David/OneDrive/Documents/Work/Thesis/Code/data')
-
-    df= read.csv('ten_games_formatted.csv')
-    df = df[,-c(12)]
-    df = df[,c(1,12,seq(2,11))]
-    #df <- cbind(cumsum(!duplicated(df[5:6])),df)
-    colnames(df) = c("matchID","player","frame","state","score_left","score_right","left_team","right_team",
-                       "x","y","vX","vY")
-
-    #clean up
-    df$x<-as.numeric(df$x)+53.5
-    df$y<-as.numeric(df$y)+35
-    df$vX<-as.numeric(df$vX)
-    df$vY<-as.numeric(df$vY)
-    df$speed <- sqrt((df$vX)^2+(df$vY)^2)
-    df$state <- as.factor(df$state)
-    #df$speedGroup <- as.numeric(cut(df$speed, c(0,0.03,0.073,0.13,0.24,0.48,0.6),include.lowest = T))
-    df$speedGroup <- as.numeric(cut(df$speed, c(0,seq(0.001,0.55,by=0.05),10),include.lowest = T))
-    df$time <- as.numeric(df$frame)/10
-    df$team <- cut(df$player,c(0,1,12,23),include.lowest = T)
-    levels(df$team) <- c("b","l","r")
-    df$final_score_left <- sub(".*?_", "", df$left_team)
-    df$final_score_right <- sub(".*?_", "", df$right_team)
-    df$left_team <- gsub("(.*)_.*", "\\1", df$left_team)
-    df$left_team <- as.factor(df$left_team)
-    df$right_team <- gsub("(.*)_.*", "\\1", df$right_team)
-    df$right_team <- as.factor(df$right_team)
 
 #taki's movement model function. Needs to be reweighted for velocities
 taki <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,a = 4.2*8.2/0.6,scale=8.2/0.6){
@@ -272,7 +242,7 @@ soccerPitch() +
   scale_fill_manual(values=c(pal[2],pal[4]))+
   #coord_fixed()+
   labs(x="",y="")+
-  geom_sf(data=testSM,mapping = aes(fill=as.factor(id)),alpha=0.2,show.legend = F)+
+  geom_sf(data=combined2,mapping = aes(fill=as.factor(id)),alpha=0.2,show.legend = F)+
   geom_point(data = subset(match,frame==100),
              mapping=aes(x=x,y=y,color=as.factor(team)),
              position = 'jitter',
@@ -283,6 +253,10 @@ soccerPitch() +
                show.legend = F)
 
 ##Brefeld
+
+transformedData <- read.csv('C:/Users/David/Desktop/player_movement.csv')
+
+player = setClass("player",slots = list(id='character',team='character',densities='list'))
 
 ##transform the datapoint to the origin version
 transform <- function(ps,pt,pu){
@@ -333,18 +307,11 @@ probPKDE <- function(tD,ps,pt,p,v){
 
 }
 
-match = subset(df,matchID == 5)
-td <- 0.2
-times <- c(0.1,0.2,0.4,0.5,0.75,1)
-player <- 5
-temp <- subset(match, !(player %in% c(1,2,13)) & state == " play_on")
-temp <- subset(match, player == 14 & state == " play_on")
-
 findTriplets<-function(data = temp,timesList =times){
   preGap <- td/0.1
   rows = nrow(data)
   triplets <- data.frame()
-  for (time in  times){
+  for (time in  timesList){
     gap = time/0.1
     if (nrow(triplets) == 0){
       psx <- data[1:(rows-preGap-gap),]$x
@@ -405,24 +372,85 @@ filterDataTriplets <- function(data = subset(df,state==" play_on"),timesList = s
   return(all_triplets_all_players)
 }
 
+findDensities<-function(data,average = FALSE){
+  #given a list of transformed P and V and tD
+  #find the kde for each speedgroup and time
+  #create player object for each player and add each kde to a list for the 'densities' attribute
+  #create and return list of players
+  #if average == true then also return a model for the average outfield player
+  
+  players <- c()
+  for (this.team in levels(as.factor(data$team))){
+    print(this.team)
+    for (i in 1:11){
+      print(i)
+      this.densities <- c()
+      for (this.speedGroup in levels(as.factor(data$speedGroup))){
+        print(this.speedGroup)
+        temp <- subset(data, team == this.team & player == i & speedGroup == this.speedGroup)
+        speedDensities <- c()
+        for (this.time in levels(as.factor(data$time))){
+          print(this.time)
+          timeSet <- subset(temp, time == this.time)
+          if(nrow(timeSet)>1){
+            if (var(timeSet$X0)==0 | var(timeSet$X1)==0){
+              speedDensities <- c(speedDensities,0)  
+            }
+            else{
+              dens <- kde2d(timeSet$X0,timeSet$X1,
+                            h = c(ifelse(bandwidth.nrd(timeSet$X0) < 0.001, 0.1, bandwidth.nrd(timeSet$X0)),
+                                  ifelse(bandwidth.nrd(timeSet$X1) < 0.001, 0.1, bandwidth.nrd(timeSet$X1))))
+              speedDensities <- c(speedDensities,dens)  
+            }
+          }
+          else{
+            speedDensities <- c(speedDensities,0)
+          }
+          
+        }
+        this.densities <- c(this.densities,speedDensities)
+      }
+      players <- c(players,player(id = as.character(i),
+                                  team = as.character(this.team),
+                                  densities = this.densities))
+    }
+  }
+  return(players)
+}
+
+densities <- findDensities(transformedData)
+
+match = subset(df,matchID == 5)
+td <- 0.2
+times <- c(1,2,3,4,5,6)
+player <- 5
+temp <- subset(match, !(player %in% c(1,2,13)) & state == " play_on")
+temp <- subset(match, player == 14 & state == " play_on")
+
 test <- filterDataTriplets()
-temp <- subset(test[test$team == "HELIOS2016",],player==5)
+temp <- subset(triplets[triplets$team == "Oxsy",],player==5)
+temp <- subset(temp,time==3)
 
 td <- 0.2
 tD <- 5
 cl <- makeCluster(8)
 registerDoParallel(cl)
+start = Sys.time()
 St <- as.data.frame(foreach(row = iter(temp,by='row'),
-                            .combine  = "rbind") %dopar% c(transform(c(row[[4]],row[[5]]),
+                            .combine  = "rbind") %dopar% 
+                                                           transform(c(row[[4]],row[[5]]),
                                                                      c(row[[6]],row[[7]]),
-                                                                     c(row[[8]],row[[9]])),
-                                                           row[[11]],
-                                                           row[[12]]),row.names = NULL)
+                                                                     c(row[[8]],row[[9]])))#,
+#c(row[[2]],
+#  row[[3]],
+#                                                           row[[11]],
+#                                                           row[[12]]),row.names = NULL)
 stopCluster(cl)
+(Sys.time()-start)
 #St$V4 <- temp[((td/0.1)+1):(nrow(temp)-tD/0.1),11]
 #St$V5 <- temp[((td/0.1)+1):(nrow(temp)-tD/0.1),12]
-St$V6 <- 1
-colnames(St) <- c("x","y","speedGroup","tD","huh")
+#St$V6 <- 1
+colnames(St) <- c("team","player","x","y","speedGroup","tD")
 
 td <- 0.2
 tD <- 5

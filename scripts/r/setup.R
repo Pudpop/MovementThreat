@@ -49,6 +49,12 @@ reader <- function(path = 'C:/Users/David/OneDrive/Documents/Work/Thesis/Code/da
         df$time <- as.numeric(df$frame)/10
         df$team <- cut(df$player,c(0,1,12,23),include.lowest = T)
         levels(df$team) <- c("b","l","r")
+        df$final_score_left <- sub(".*?_", "", df$left_team)
+        df$final_score_right <- sub(".*?_", "", df$right_team)
+        df$left_team <- gsub("(.*)_.*", "\\1", df$left_team)
+        df$left_team <- as.factor(df$left_team)
+        df$right_team <- gsub("(.*)_.*", "\\1", df$right_team)
+        df$right_team <- as.factor(df$right_team)
         
         return(df)
 }
