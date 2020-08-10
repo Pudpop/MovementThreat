@@ -26,6 +26,9 @@
   x_bin_width = 107/x_segmentation
   y_bin_width = 70/y_segmentation
 
+#read in data
+  df <- reader()
+  
 #taki's movement model function. Needs to be reweighted for velocities
 taki <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,a = 4.2*8.2/0.6,scale=8.2/0.6){
   v[1] = scale * v[1]
@@ -146,10 +149,10 @@ synthesize <- function(index,parts=partialRR){
   return(poly)
 }
 
-partial <- function(time, one_frame){
+partial <- function(time, one_frame,momo = fujsug){
 
   #apply reachable region function to all players
-  rr<-apply(FUN=reach,MARGIN=1,X=cbind(one_frame[,9:12],rep(time,22)))
+  rr<-apply(FUN=reach,MARGIN=1,X=cbind(one_frame[,9:12],rep(time,22)),mm = momo)
 
   #format column names for bind_rows
   for ( i in 1:length(rr)){
@@ -222,7 +225,7 @@ cl <- makeCluster(8)
 registerDoParallel(cl)
 partialRR <- foreach(i = 1:length(times),
                      .combine="c",
-                     .packages = c('dplyr','sf','igraph')) %dopar% partial(times[i],one_frame)
+                     .packages = c('dplyr','sf','igraph')) %dopar% partial(times[i],one_frame,taki)
 stopCluster(cl)
 cl <- makeCluster(8)
 registerDoParallel(cl)
@@ -254,9 +257,17 @@ soccerPitch() +
 
 ##Brefeld
 
+#-----------------------------------------------------#
+#draw contours
+#replace last number with number from 1-69
+filled.contour(gliders@players[[5]]@densities[[5]]@time_densities[[50]])
+#-----------------------------------------------------#
+
 transformedData <- read.csv('C:/Users/David/Desktop/player_movement.csv')
 
+team = setClass("team",slots = list(name ='character',players = 'vector'))
 player = setClass("player",slots = list(id='character',team='character',densities='list'))
+speed = setClass("speed",slots = list(time_densities='list'))
 
 ##transform the datapoint to the origin version
 transform <- function(ps,pt,pu){
@@ -266,48 +277,7 @@ transform <- function(ps,pt,pu){
   return(c(r*cos(theta),r*sin(theta)))
 }
 
-##find indices of online updating matrices
-indices <- function(p,vt,tD){
-  return(c(floor((p[1]+53.5)/2),floor((p[2]+35)/2),vt,which(tD == times)))
-}
-
-##algorithm to create matrices for online updating
-alg2 <- function(tD,td=5,data = temp){
-  B <- rep(list(matrix(0,nrow=35,ncol=54)),length(levels(as.factor(data$speedGroup))))
-  for (i in levels(as.factor(data$player))){
-    df1 <- subset(data,player == i)
-    gap <- tD/0.1
-    for (j in 6:(nrow(df1)-gap)){
-      pt <- c(df1[(j),9],df1[(j),10])
-      ps <- c(df1[(j-5),9],df1[(j-5),10])
-
-      pu <- c(df1[(j+gap),9],df1[(j+gap),10])
-      p <- transform(ps,pt,pu)
-      vt <- as.numeric(df1[j,14])
-      abcd <- indices(p,vt,tD)
-      #print(paste(j,abcd[1],abcd[2],abcd[3],abcd[4],sep=" "))
-      if (!("FALSE" %in% as.list(abcd>0)) && abcd[1] <=54 && abcd[2] <=35){
-
-        B[abcd[3]][[1]][abcd[2],abcd[1]] <- B[abcd[3]][[1]][abcd[2],abcd[1]] + 1
-      }
-
-    }
-  }
-
-  return(B)
-}
-
-##calculate the probability
-probP <- function(tD,ps,pt,p,v){
-  abcd <- indices(transform(ps,pt,p),v,tD)
-  return((A[abcd[4]][[1]][abcd[3]][[1]][abcd[1],abcd[2]])/(sum(colSums(A[abcd[4]][[1]][abcd[3]][[1]]))))
-}
-
-probPKDE <- function(tD,ps,pt,p,v){
-
-}
-
-findTriplets<-function(data = temp,timesList =times){
+findTriplets<-function(data = temp,timesList =times,td = 0.2){
   preGap <- td/0.1
   rows = nrow(data)
   triplets <- data.frame()
@@ -342,12 +312,37 @@ findTriplets<-function(data = temp,timesList =times){
   return(triplets)
 }
 
-filterDataTriplets <- function(data = subset(df,state==" play_on"),timesList = seq(0.1,2,by=0.1)){
+filterDataTriplets <- function(data = subset(df,state==" play_on"),timesList = times,teamName = NULL){
   all_triplets_all_players <- data.frame(matchID = numeric(0),team = character(0),player= numeric(0),
                                          psx= numeric(0),psy= numeric(0),ptx= numeric(0),pty= numeric(0),
                                          pux= numeric(0),puy= numeric(0),speed= numeric(0),
                                          speedGroup= numeric(0),time= numeric(0))
-  for (team in unique(c(levels(data$right_team),levels(data$left_team)))){
+  if (is.null(teamName)){
+    for (team in unique(c(levels(data$right_team),levels(data$left_team)))){
+      print(team)
+      team_temp <- rbind(data[data$left_team==team,],data[data$right_team==team,])
+      for (match in levels(as.factor(team_temp$matchID))){
+        print(match)
+        match_temp <- subset(team_temp,matchID == match)
+        players = seq(13,23)
+        if (match_temp[1,]$left_team == team){
+          players = seq(2,12)
+        }
+        for (playerID in players){
+          player_temp <- subset(match_temp,player == playerID)
+          player_triplets <- findTriplets(data = player_temp)
+          player_triplets$matchID <- as.numeric(match)
+          player_triplets$team <- team
+          player_triplets$player <- ((as.numeric(playerID)-1)%%11)+1
+          player_triplets <- player_triplets[,c(seq(10,12),seq(1,9))]
+          all_triplets_all_players <- rbind(all_triplets_all_players,
+                                            player_triplets)
+        }
+      }
+    }
+  }
+  else{
+    team <- teamName
     print(team)
     team_temp <- rbind(data[data$left_team==team,],data[data$right_team==team,])
     for (match in levels(as.factor(team_temp$matchID))){
@@ -369,54 +364,200 @@ filterDataTriplets <- function(data = subset(df,state==" play_on"),timesList = s
       }
     }
   }
+  
   return(all_triplets_all_players)
 }
 
-findDensities<-function(data,average = FALSE){
+triplets <- filterDataTriplets(team = "Gliders2016")
+write.csv(triplets,"C:/Users/David/Desktop/triplets_Gliders.csv")
+triplets <- filterDataTriplets(team = "HELIOS2016")
+write.csv(triplets,"C:/Users/David/Desktop/triplets_helios16.csv")
+triplets <- filterDataTriplets(team = "HELIOS2017")
+write.csv(triplets,"C:/Users/David/Desktop/triplets_helios17.csv")
+triplets <- filterDataTriplets(team = "Oxsy")
+write.csv(triplets,"C:/Users/David/Desktop/triplets_Oxsy.csv")
+triplets <- filterDataTriplets(team = "HfutEngine2017")
+write.csv(triplets,"C:/Users/David/Desktop/triplets_Hfut.csv")
+
+findDensitiesTeam<-function(data,this.team,average = FALSE){
   #given a list of transformed P and V and tD
   #find the kde for each speedgroup and time
   #create player object for each player and add each kde to a list for the 'densities' attribute
   #create and return list of players
   #if average == true then also return a model for the average outfield player
   
-  players <- c()
-  for (this.team in levels(as.factor(data$team))){
-    print(this.team)
+  players <- list(length = 11)
     for (i in 1:11){
       print(i)
-      this.densities <- c()
-      for (this.speedGroup in levels(as.factor(data$speedGroup))){
-        print(this.speedGroup)
+      speeds <- levels(as.factor(data$speedGroup))
+      times <- levels(as.factor(data$time))
+      this.player <- player(id = as.character(i),
+                            team = as.character(this.team),
+                            densities = list(length = length(speeds)))
+      for (j in 1:length(speeds)){
+        this.speedGroup <- speeds[j]
+        #print(this.speedGroup)
         temp <- subset(data, team == this.team & player == i & speedGroup == this.speedGroup)
-        speedDensities <- c()
-        for (this.time in levels(as.factor(data$time))){
-          print(this.time)
+        speedDensities <- speed(time_densities = list(length = length(times)))
+        for (k in 1:length(times)){
+          this.time <- times[k]
+          #print(this.time)
           timeSet <- subset(temp, time == this.time)
           if(nrow(timeSet)>1){
             if (var(timeSet$X0)==0 | var(timeSet$X1)==0){
-              speedDensities <- c(speedDensities,0)  
+              speedDensities@time_densities[[k]] <- 0  
             }
             else{
               dens <- kde2d(timeSet$X0,timeSet$X1,
                             h = c(ifelse(bandwidth.nrd(timeSet$X0) < 0.001, 0.1, bandwidth.nrd(timeSet$X0)),
                                   ifelse(bandwidth.nrd(timeSet$X1) < 0.001, 0.1, bandwidth.nrd(timeSet$X1))))
-              speedDensities <- c(speedDensities,dens)  
+              speedDensities@time_densities[[k]] <- dens  
             }
           }
           else{
-            speedDensities <- c(speedDensities,0)
+            speedDensities@time_densities[[k]] <- 0
           }
           
         }
-        this.densities <- c(this.densities,speedDensities)
+        this.player@densities[[j]] <- speedDensities
       }
-      players <- c(players,player(id = as.character(i),
-                                  team = as.character(this.team),
-                                  densities = this.densities))
+      players[[i]] <- this.player
     }
-  }
   return(players)
 }
+
+trans <- read.csv("C:/Users/David/Desktop/player_movement_gliders.csv")
+gliders <- team(name = "Gliders2016",players = findDensitiesTeam(trans,"Gliders2016"))
+rm(trans)
+trans <- read.csv("C:/Users/David/Desktop/player_movement_helios16.csv")
+helios16 <- team(name = "HELIOS2016",players = findDensitiesTeam(trans,"HELIOS2016"))
+helios17 <- team(name = "HELIOS2017",players = findDensitiesTeam(transformedData,"HELIOS2017"))
+oxsy <- team(name = "Oxsy" ,players = findDensitiesTeam(transformedData,"Oxsy"))
+hfut <- team(name = "HfutEngine2017",players = findDensitiesTeam(transformedData,"HfutEngine2017"))
+teams <- list(gliders,helios16,helios17,oxsy,hfut)
+
+# now we draw the dominant regions using these densities
+
+#start with taking subset
+#take subset to demo
+match = subset(df,matchID == 5)
+one_frame = subset(match, player !=1 & frame == 100)
+teamsList <- c("Gliders2016","HELIOS2016","HELIOS2017","Oxsy","HfutEngine2017")
+
+# create discretized grid
+coords <- data.frame(
+  x = rep(1:25, 25),
+  y = rep(1:25, each = 25)
+)
+coords$player = 1
+coords$team = "b"
+coords$prob = 0
+
+
+#create subset of relevant densities
+left_team_densities <- list(length = 11)
+right_team_densities <- list(length = 11)
+
+for (i in 2:12){
+  player_id <- i-1
+  l_team <- unique(one_frame$left_team)
+  team_id <- grep(l_team,teamsList)
+  speed <- subset(one_frame,player==i)$speedGroup
+  left_team_densities[[player_id]] <- teams[[team_id]]@players[[player_id]]@densities[[speed]]@time_densities
+  
+  r_team <- unique(one_frame$right_team)
+  team_id <- grep(r_team,teamsList)
+  speed <- subset(one_frame,player==(i+11))$speedGroup
+  right_team_densities[[player_id]] <- teams[[team_id]]@players[[player_id]]@densities[[speed]]@time_densities
+  
+}
+
+
+for (time in 1:length(times)){
+  print(time)
+  for (row in 1:nrow(coords)){
+    if ((coords[row,]$player == 1)){
+      #print("here")
+      prob <- coords[row,]$prob
+      for (i in 1:11){
+        left_prob <- left_team_densities[[i]][[time]]$z[coords[row,1],coords[row,2]]
+        if (left_prob > prob){
+          prob <- left_prob
+          coords[row,]$prob <- left_prob
+          coords[row,]$player <- i+1
+          coords[row,]$team <- "l"
+        }
+        right_prob <- right_team_densities[[i]][[time]]$z[coords[row,1],coords[row,2]]
+        if (right_prob > prob){
+          prob <- right_prob
+          coords[row,]$prob <- right_prob
+          coords[row,]$player <- i+12
+          coords[row,]$team <- "r"
+        }
+        
+      }
+    }
+    
+  }  
+}
+
+ggplot(coords, aes(x, y)) +
+  geom_tile(aes(fill = team), colour = "grey50")
+
+#---------------------------------------------------------#
+# Everything below here is unsorted or currently not used
+#---------------------------------------------------------#
+
+##find indices of online updating matrices
+indices <- function(p,vt,tD){
+  return(c(floor((p[1]+53.5)/2),floor((p[2]+35)/2),vt,which(tD == times)))
+}
+
+##algorithm to create matrices for online updating
+alg2 <- function(tD,td=5,data = temp){
+  B <- rep(list(matrix(0,nrow=35,ncol=54)),length(levels(as.factor(data$speedGroup))))
+  for (i in levels(as.factor(data$player))){
+    df1 <- subset(data,player == i)
+    gap <- tD/0.1
+    for (j in 6:(nrow(df1)-gap)){
+      pt <- c(df1[(j),9],df1[(j),10])
+      ps <- c(df1[(j-5),9],df1[(j-5),10])
+      
+      pu <- c(df1[(j+gap),9],df1[(j+gap),10])
+      p <- transform(ps,pt,pu)
+      vt <- as.numeric(df1[j,14])
+      abcd <- indices(p,vt,tD)
+      #print(paste(j,abcd[1],abcd[2],abcd[3],abcd[4],sep=" "))
+      if (!("FALSE" %in% as.list(abcd>0)) && abcd[1] <=54 && abcd[2] <=35){
+        
+        B[abcd[3]][[1]][abcd[2],abcd[1]] <- B[abcd[3]][[1]][abcd[2],abcd[1]] + 1
+      }
+      
+    }
+  }
+  
+  return(B)
+}
+
+##calculate the probability
+probP <- function(tD,ps,pt,p,v){
+  abcd <- indices(transform(ps,pt,p),v,tD)
+  return((A[abcd[4]][[1]][abcd[3]][[1]][abcd[1],abcd[2]])/(sum(colSums(A[abcd[4]][[1]][abcd[3]][[1]]))))
+}
+
+probPKDE <- function(tD,ps,pt,p,v){
+  
+}
+
+
+  cl <- makeCluster(5)
+  registerDoParallel(cl)
+  teams <- foreach(teamName = levels(as.factor(transformedData$team)),
+                   .export = c("findDensitiesTeam","team","player","speed"),
+                   .combine="list") %dopar% team(name = teamName,
+                                                 players = findDensitiesTeam(transformedData,
+                                                                                                                  this.team = teamName))
+  stopCluster(cl)
 
 densities <- findDensities(transformedData)
 
