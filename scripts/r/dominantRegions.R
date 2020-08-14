@@ -30,7 +30,7 @@
   df <- reader()
   
 #taki's movement model function. Needs to be reweighted for velocities
-taki <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,a = 4.2*8.2/0.6,scale=8.2/0.6){
+taki <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,a = 4.2,scale=8.2/0.6){
   v[1] = scale * v[1]
   v[2] = scale * v[2]
   newX <- origin[1]+(0.5*a*cos(angle)*t^2+v[1]*t)
@@ -368,15 +368,15 @@ filterDataTriplets <- function(data = subset(df,state==" play_on"),timesList = t
   return(all_triplets_all_players)
 }
 
-triplets <- filterDataTriplets(team = "Gliders2016")
+triplets <- filterDataTriplets(teamName = "Gliders2016")
 write.csv(triplets,"C:/Users/David/Desktop/triplets_Gliders.csv")
-triplets <- filterDataTriplets(team = "HELIOS2016")
+triplets <- filterDataTriplets(teamName = "HELIOS2016")
 write.csv(triplets,"C:/Users/David/Desktop/triplets_helios16.csv")
-triplets <- filterDataTriplets(team = "HELIOS2017")
+triplets <- filterDataTriplets(teamName = "HELIOS2017")
 write.csv(triplets,"C:/Users/David/Desktop/triplets_helios17.csv")
-triplets <- filterDataTriplets(team = "Oxsy")
+triplets <- filterDataTriplets(teamName = "Oxsy")
 write.csv(triplets,"C:/Users/David/Desktop/triplets_Oxsy.csv")
-triplets <- filterDataTriplets(team = "HfutEngine2017")
+triplets <- filterDataTriplets(teamName = "HfutEngine2017")
 write.csv(triplets,"C:/Users/David/Desktop/triplets_Hfut.csv")
 
 findDensitiesTeam<-function(data,this.team,average = FALSE){
@@ -389,32 +389,43 @@ findDensitiesTeam<-function(data,this.team,average = FALSE){
   players <- list(length = 11)
     for (i in 1:11){
       print(i)
-      speeds <- levels(as.factor(data$speedGroup))
-      times <- levels(as.factor(data$time))
+      speeds <- seq(1:12)
+      this.times <- times
       this.player <- player(id = as.character(i),
                             team = as.character(this.team),
                             densities = list(length = length(speeds)))
+      temp <- subset(data, team == this.team & player == i)
       for (j in 1:length(speeds)){
         this.speedGroup <- speeds[j]
         #print(this.speedGroup)
-        temp <- subset(data, team == this.team & player == i & speedGroup == this.speedGroup)
+        tempSpeed <- subset(temp, speedGroup == this.speedGroup)
         speedDensities <- speed(time_densities = list(length = length(times)))
-        for (k in 1:length(times)){
-          this.time <- times[k]
+        #browser()
+        for (k in 1:length(this.times)){
+          this.time <- this.times[k]
           #print(this.time)
-          timeSet <- subset(temp, time == this.time)
+          timeSet <- subset(tempSpeed, as.character(time) == as.character(this.time))
           if(nrow(timeSet)>1){
             if (var(timeSet$X0)==0 | var(timeSet$X1)==0){
               speedDensities@time_densities[[k]] <- 0  
+              #print("here variance")
             }
             else{
               dens <- kde2d(timeSet$X0,timeSet$X1,
                             h = c(ifelse(bandwidth.nrd(timeSet$X0) < 0.001, 0.1, bandwidth.nrd(timeSet$X0)),
-                                  ifelse(bandwidth.nrd(timeSet$X1) < 0.001, 0.1, bandwidth.nrd(timeSet$X1))))
-              speedDensities@time_densities[[k]] <- dens  
+                                  ifelse(bandwidth.nrd(timeSet$X1) < 0.001, 0.1, bandwidth.nrd(timeSet$X1))),
+                            n = c(107,70),
+                            lims = c(-53.5,53.5,-35,35))
+              dens_smoothed <- dens$z %>% 
+                as_tibble() %>%
+                pivot_longer(cols = everything(), names_to = "col", values_to = "val") %>% 
+                mutate(x = rep(tempDens$x, each = 70), # EDIT: fixed, these were swapped
+                       y = rep(tempDens$y, 107))
+              speedDensities@time_densities[[k]] <- dens_smoothed 
             }
           }
           else{
+            #print(timeSet)
             speedDensities@time_densities[[k]] <- 0
           }
           
@@ -431,10 +442,17 @@ gliders <- team(name = "Gliders2016",players = findDensitiesTeam(trans,"Gliders2
 rm(trans)
 trans <- read.csv("C:/Users/David/Desktop/player_movement_helios16.csv")
 helios16 <- team(name = "HELIOS2016",players = findDensitiesTeam(trans,"HELIOS2016"))
-helios17 <- team(name = "HELIOS2017",players = findDensitiesTeam(transformedData,"HELIOS2017"))
-oxsy <- team(name = "Oxsy" ,players = findDensitiesTeam(transformedData,"Oxsy"))
-hfut <- team(name = "HfutEngine2017",players = findDensitiesTeam(transformedData,"HfutEngine2017"))
-teams <- list(gliders,helios16,helios17,oxsy,hfut)
+#rm(trans)
+trans <- read.csv("C:/Users/David/Desktop/player_movement_helios17.csv")
+helios17 <- team(name = "HELIOS2017",players = findDensitiesTeam(trans,"HELIOS2017"))
+#rm(trans)
+trans <- read.csv("C:/Users/David/Desktop/player_movement_oxsy.csv")
+oxsy <- team(name = "Oxsy" ,players = findDensitiesTeam(trans,"Oxsy"))
+#rm(trans)
+trans <- read.csv("C:/Users/David/Desktop/player_movement_hfut.csv")
+hfut <- team(name = "HfutEngine2017",players = findDensitiesTeam(trans,"HfutEngine2017"))
+#rm(trans)
+#teams <- list(gliders,helios16,helios17,oxsy,hfut)
 
 # now we draw the dominant regions using these densities
 
@@ -444,10 +462,19 @@ match = subset(df,matchID == 5)
 one_frame = subset(match, player !=1 & frame == 100)
 teamsList <- c("Gliders2016","HELIOS2016","HELIOS2017","Oxsy","HfutEngine2017")
 
+temp <- subset(trans, team == "HELIOS2017" & player == 5 & speedGroup == 5 & time == 5)
+tempDens <- kde2d(temp$X0,temp$X1,n=c(107,70),lims = c(-53.5,53.5,-35,35))
+
+dens_smoothed <- tempDens$z %>% 
+  as_tibble() %>%
+  pivot_longer(cols = everything(), names_to = "col", values_to = "val") %>% 
+  mutate(x = rep(tempDens$x, each = 70), # EDIT: fixed, these were swapped
+         y = rep(tempDens$y, 107))
+
 # create discretized grid
 coords <- data.frame(
-  x = rep(1:25, 25),
-  y = rep(1:25, each = 25)
+  x = rep(1:107, 70),
+  y = rep(1:70, each = 107)
 )
 coords$player = 1
 coords$team = "b"
@@ -480,7 +507,7 @@ for (time in 1:length(times)){
       #print("here")
       prob <- coords[row,]$prob
       for (i in 1:11){
-        left_prob <- left_team_densities[[i]][[time]]$z[coords[row,1],coords[row,2]]
+        left_prob <- left_team_densities[[i]][[time]]$z[floor(coords[row,1]),coords[row,2]]
         if (left_prob > prob){
           prob <- left_prob
           coords[row,]$prob <- left_prob
