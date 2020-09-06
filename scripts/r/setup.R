@@ -18,7 +18,9 @@
   library(sf)
   library(sp)
   library(rgdal)
-
+  library(smoothr)
+  library(igraph)
+  
 pal <- c("#A6CEE3","#1F78B4","#b2df8a","#33a02c",
          "#fb9a99","#fb9a99","#fdbf6f","#ff7f00",
          "#cab2d6","#6a3d9a","#ffff99")

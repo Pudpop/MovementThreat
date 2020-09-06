@@ -1,4 +1,5 @@
 #general
+  library(tidyverse)
   library(dplyr)
   library(foreach) #parallel
   library(doParallel) #parallel
@@ -18,6 +19,7 @@
   library(sp)
   library(rgdal)
   library(smoothr)
+  library(igraph)
 
 #global constants
   scale = 8.2/0.6
@@ -30,7 +32,7 @@
   df <- reader()
   
 #taki's movement model function. Needs to be reweighted for velocities
-taki <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,a = 4.2,scale=8.2/0.6){
+taki <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,a = 4.2*(8.2/0.6),scale=8.2/0.6){
   v[1] = scale * v[1]
   v[2] = scale * v[2]
   newX <- origin[1]+(0.5*a*cos(angle)*t^2+v[1]*t)
@@ -78,6 +80,61 @@ reach <- function(param,mm = fujsug){
                             origin = c(param[1],param[2]),
                             v = c(param[3],param[4]),
                             t = param[5]))))
+}
+
+reach_brefeld <- function(param,momo,timesList = times){
+  
+  posx=2
+  posy=3
+  
+  this.player = (as.numeric(param[1])-2) %% 11 + 1
+  
+  this.team = 2
+  if (param[7] == "l"){
+    this.team = 1
+  }
+  
+  time_delta_index <- which(timesList == as.numeric(param[8]))
+  
+  dens <-  momo[[this.team]] %>%
+                get_dens(player = this.player,
+                      speed = as.integer(param[6]),
+                      time = time_delta_index)
+  if (length(dens) == 1){
+    cl <- data.frame(x = param[2]-53.5,y=param[3]-35)
+    posx=1
+    posy=2
+  }
+  else{
+    cl <-  contourLines(x = dens$x,
+                        y = dens$y,
+                        z = dens$z,
+                        levels = c(quantile(x = dens$z %>%
+                                              log() %>%
+                                              as.vector(),
+                                            probs = 0.9)[[1]] %>%
+                                     exp()))
+    if (length(cl) == 0){
+      cl <- data.frame(x = param[2]-53.5,y=param[3]-35)
+      posx=1
+      posy=2
+    }
+    else{
+      cl <- cl %>% lapply(FUN=data.frame) %>% bind_rows()
+    }
+    
+  }
+  
+  rot_angle <- atan2(param[5] %>% as.numeric(),
+                     param[4] %>% as.numeric())
+  cl$rotx <- (cl$x)*cos(rot_angle)+(cl$y)*sin(rot_angle)
+  cl$roty <- (cl$x)*(-sin(rot_angle))+ (cl$y)*cos(rot_angle)
+  
+  cl$x <- cl$rotx + as.numeric(param[2])
+  cl$y <- cl$roty + as.numeric(param[3])
+  
+  return(cl[,c(posx,posy)])
+  
 }
 
 #step 4 of algorithm: synthesize the partial dominant regions
@@ -149,17 +206,48 @@ synthesize <- function(index,parts=partialRR){
   return(poly)
 }
 
+mom <- list(gliders,helios16)
+test <- cbind(one_frame[,c(2,9,10,11,12,14,16)],rep(times[69],22))
+part <- data.frame(x=numeric(),y=numeric(),id=numeric())
+for (i in 1:22){
+  temp <- reach_brefeld(test[i,],mom)
+  temp <- cbind(temp,rep(i,nrow(temp)))
+  colnames(temp) <-  c('x',"y","id")
+  part <- rbind(part,temp)
+}
+
+soccerPitch() + 
+  geom_point(data = one_frame,mapping = aes(x=x,y=y,color=team))+
+  geom_point(data = part %>% subset(id==9),mapping=aes(x=x,y=y))+
+  geom_segment(data=one_frame,mapping=aes(x=x,y=y,xend=x+vX*scale,yend=y+vY*scale))+
+  coord_fixed()+
+  scale_color_manual(values=c(pal[5],pal[2],pal[4]))+
+  labs(x="",y="")
+
 partial <- function(time, one_frame,momo = fujsug){
-
+  rr <- numeric()
   #apply reachable region function to all players
-  rr<-apply(FUN=reach,MARGIN=1,X=cbind(one_frame[,9:12],rep(time,22)),mm = momo)
-
-  #format column names for bind_rows
-  for ( i in 1:length(rr)){
-    colnames(rr[[i]]) <- c("x","y")
+  if (length(momo) > 1){
+    #rr <- apply(FUN=reach_brefeld,MARGIN=1, X = cbind(one_frame[,c(2,9,10,11,12,14,16)],rep(time,22)),mm = momo)
+    test <- cbind(one_frame[,c(2,9,10,11,12,14,16)],rep(times[69],22))
+    rr <- data.frame(x=numeric(),y=numeric(),id=numeric())
+    for (i in 1:22){
+      temp <- reach_brefeld(test[i,],momo)
+      temp <- cbind(temp,rep(i,nrow(temp)))
+      colnames(temp) <-  c('x',"y","id")
+      rr <- rbind(rr,temp)
+    }
   }
-  #create one data frame
-  rr<-bind_rows(rr,.id='id')
+  else{
+    rr<-apply(FUN=reach,MARGIN=1,X=cbind(one_frame[,9:12],rep(time,22)),mm = momo) 
+    
+    #format column names for bind_rows
+    for ( i in 1:length(rr)){
+      colnames(rr[[i]]) <- c("x","y")
+    }
+    #create one data frame
+    rr<-bind_rows(rr,.id='id')
+  }
 
   #convert to sf object
   df.sf <- rr %>%
@@ -168,9 +256,24 @@ partial <- function(time, one_frame,momo = fujsug){
   #find convex hulls of each region
   hulls <- df.sf %>%
     group_by( id ) %>%
-    summarise( geometry = st_combine( geometry ) ) %>%
-    st_convex_hull()
+    summarise( geometry = st_combine( geometry ) ,do_union=F) %>%
+    st_convex_hull() %>%
+    suppressWarnings()
 
+  #if (!(is_empty(empty))){
+    #union of previously empty regions
+    #add union
+  #  hulls[23,] <- list(id="1",geometry=hulls$geometry[empty] %>%
+  #                                    summarise(do_union = F) %>%
+  #                                    st_cast("MULTIPOLYGON") %>%
+  #                                    suppressWarnings()
+  #                     )
+    
+    #replace emptyies with empty polygon
+  #  hulls[emptyempty,]<-st_sf(data.frame(id="1",geometry=st_sfc(st_polygon())))
+  #}
+  
+  
   #list of all intersections between polygons in sf object hulls
   inter<-st_intersects(hulls)
 
@@ -182,7 +285,8 @@ partial <- function(time, one_frame,momo = fujsug){
   colnames(tw_inter) <- c("i","V2")
   tw_inter$i <- as.integer(tw_inter$i)
   tw_inter$V2 <- as.integer(tw_inter$V2)
-
+  #
+  #browser()
   #find partial regions
   temp <- hulls
   if (nrow(tw_inter)>0){
@@ -193,6 +297,10 @@ partial <- function(time, one_frame,momo = fujsug){
       temp$geometry[[tw_inter$V2[[k]]]] <- diff2
     }
   }
+  
+  #print(temp$geometry)
+  #empty_indices <<- unique(c(empty,which(st_is_empty(subset(temp,id %in% temp$id))==TRUE)))
+  #return(subset(temp,id %in% temp$id))#
   return(temp)
 
 }
@@ -204,8 +312,15 @@ form_syn <- function(index){
   else{
     team = "r"
   }
-  combined2<-st_cast(st_sfc(synthesize(index,partialRR)),"POLYGON")
-  combined2<- st_sf(id = rep(team,length(combined2)),geom = combined2)
+  combined2 <- synthesize(index,partialRR)
+  if (!(class(combined2)[[2]]=="GEOMETRYCOLLECTION" | class(combined2)[[2]]=="POINT")){
+    combined2<-st_cast(st_sfc(combined2),"POLYGON") 
+    combined2<- st_sf(id = rep(team,length(combined2)),geometry = combined2)
+  }
+  else{
+    combined2<- st_sf(id = team,geometry = st_geometrycollection() %>% st_sfc())
+  }
+  
   return(combined2)
 }
 
@@ -219,13 +334,26 @@ angles <- as.matrix(seq(from = -pi, to = pi, by = pi/60))
 match = subset(df,matchID == 5)
 one_frame = subset(match, player !=1 & frame == 100)
 
-#find partial reachable regions and then synthesize them into completeted dominant regions
+#global
+empty_indices = c()
+
+
+partialRR <- c()
+for (time in times){
+  partialRR<-c(partialRR,partial(time,one_frame,list(gliders,helios16)))
+}
+combined2 <- st_sf(id = 0,geometry = st_geometrycollection() %>% st_sfc())
+for (i in 1:22){
+  combined2<-rbind(combined2,form_syn(i))
+}
+
+#find partial reachable regions and then synthesize them into completed dominant regions
 #start <- Sys.time()
 cl <- makeCluster(8)
 registerDoParallel(cl)
-partialRR <- foreach(i = 1:length(times),
+partialTest <- foreach(i = 1:length(times),
                      .combine="c",
-                     .packages = c('dplyr','sf','igraph')) %dopar% partial(times[i],one_frame,taki)
+                     .packages = c('dplyr','sf','igraph')) %dopar% partial(times[i],one_frame,fujsug)
 stopCluster(cl)
 cl <- makeCluster(8)
 registerDoParallel(cl)
@@ -242,7 +370,7 @@ testSM <- smooth(combined2)
 soccerPitch() +
   #fte_theme()+
   scale_color_manual(values=c(pal[5],pal[2],pal[4]))+
-  scale_fill_manual(values=c(pal[2],pal[4]))+
+  scale_fill_manual(values=c(pal[9],pal[2],pal[4]))+
   #coord_fixed()+
   labs(x="",y="")+
   geom_sf(data=combined2,mapping = aes(fill=as.factor(id)),alpha=0.2,show.legend = F)+
@@ -265,9 +393,28 @@ filled.contour(gliders@players[[5]]@densities[[5]]@time_densities[[50]])
 
 transformedData <- read.csv('C:/Users/David/Desktop/player_movement.csv')
 
-team = setClass("team",slots = list(name ='character',players = 'vector'))
-player = setClass("player",slots = list(id='character',team='character',densities='list'))
-speed = setClass("speed",slots = list(time_densities='list'))
+team <- function(name,players){
+ value <- list(name = name, players = players)
+ attr(value,"class") <- "team"
+ return(value)
+}
+player <- function(id,team,densities){
+  value <- list(id = id,team = team,densities = densities)
+  attr(value,"class") <- "player"
+  return(value)
+}
+speed <- function(speed,times){
+  value <- list(speed = speed, times = times)
+  attr(value,"class") <- "speed"
+  return(value)
+}
+
+get_dens <- function(team,player,speed,time){
+  return(team$players[[player]]$densities[[speed]]$times[[time]])
+}
+
+teams = c("Gliders2016","HELIOS2016","Rione","CYRUS","MT2017",
+          "Oxsy","FRAUNIted","HELIOS2017","HfutEngine2017","CSUYunlu")
 
 ##transform the datapoint to the origin version
 transform <- function(ps,pt,pu){
@@ -368,91 +515,74 @@ filterDataTriplets <- function(data = subset(df,state==" play_on"),timesList = t
   return(all_triplets_all_players)
 }
 
-triplets <- filterDataTriplets(teamName = "Gliders2016")
-write.csv(triplets,"C:/Users/David/Desktop/triplets_Gliders.csv")
-triplets <- filterDataTriplets(teamName = "HELIOS2016")
-write.csv(triplets,"C:/Users/David/Desktop/triplets_helios16.csv")
-triplets <- filterDataTriplets(teamName = "HELIOS2017")
-write.csv(triplets,"C:/Users/David/Desktop/triplets_helios17.csv")
-triplets <- filterDataTriplets(teamName = "Oxsy")
-write.csv(triplets,"C:/Users/David/Desktop/triplets_Oxsy.csv")
-triplets <- filterDataTriplets(teamName = "HfutEngine2017")
-write.csv(triplets,"C:/Users/David/Desktop/triplets_Hfut.csv")
+findDensitiesTeam<-function(this.team,path = NULL,this.times = times,average = FALSE){
+  if (is.null(path)){
+    path = paste0("C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data/test/transformed_points/",this.team)
+  }
+  this.players = list()
+  for (i in 1:11){
+    data <- read.csv(paste0(path,"/",this.team,"_",i,".csv"))
+    this.players[[i]] <- findDensityPlayer(data,
+                                      this.team,i,this.times)
+  }
+  return(team(name = this.team,players = this.players))
+}
 
-findDensitiesTeam<-function(data,this.team,average = FALSE){
+findDensityPlayer <- function(data,this.team,this.player.id,this.times,average = FALSE){
   #given a list of transformed P and V and tD
   #find the kde for each speedgroup and time
   #create player object for each player and add each kde to a list for the 'densities' attribute
   #create and return list of players
   #if average == true then also return a model for the average outfield player
-  
-  players <- list(length = 11)
-    for (i in 1:11){
-      print(i)
-      speeds <- seq(1:12)
-      this.times <- times
-      this.player <- player(id = as.character(i),
-                            team = as.character(this.team),
-                            densities = list(length = length(speeds)))
-      temp <- subset(data, team == this.team & player == i)
-      for (j in 1:length(speeds)){
-        this.speedGroup <- speeds[j]
-        #print(this.speedGroup)
-        tempSpeed <- subset(temp, speedGroup == this.speedGroup)
-        speedDensities <- speed(time_densities = list(length = length(times)))
-        #browser()
-        for (k in 1:length(this.times)){
-          this.time <- this.times[k]
-          #print(this.time)
-          timeSet <- subset(tempSpeed, as.character(time) == as.character(this.time))
-          if(nrow(timeSet)>1){
-            if (var(timeSet$X0)==0 | var(timeSet$X1)==0){
-              speedDensities@time_densities[[k]] <- 0  
-              #print("here variance")
-            }
-            else{
-              dens <- kde2d(timeSet$X0,timeSet$X1,
-                            h = c(ifelse(bandwidth.nrd(timeSet$X0) < 0.001, 0.1, bandwidth.nrd(timeSet$X0)),
-                                  ifelse(bandwidth.nrd(timeSet$X1) < 0.001, 0.1, bandwidth.nrd(timeSet$X1))),
-                            n = c(107,70),
-                            lims = c(-53.5,53.5,-35,35))
-              dens_smoothed <- dens$z %>% 
-                as_tibble() %>%
-                pivot_longer(cols = everything(), names_to = "col", values_to = "val") %>% 
-                mutate(x = rep(tempDens$x, each = 70), # EDIT: fixed, these were swapped
-                       y = rep(tempDens$y, 107))
-              speedDensities@time_densities[[k]] <- dens_smoothed 
-            }
-          }
-          else{
-            #print(timeSet)
-            speedDensities@time_densities[[k]] <- 0
-          }
-          
+  print(this.team)
+  print(this.player.id)
+  speeds <- seq(1:12)
+  this.player <- player(id = as.character(this.player.id),
+                        team = as.character(this.team),
+                        densities = list(length = length(speeds)))
+  temp <- subset(data, team == this.team & player == this.player.id)
+  for (j in 1:length(speeds)){
+    this.speedGroup <- speeds[j]
+    #print(this.speedGroup)
+    tempSpeed <- subset(temp, speedGroup == this.speedGroup)
+    speedDensities <- speed(speed = j,times = list(length = length(times)))
+    #browser()
+    for (k in 1:length(this.times)){
+      this.time <- this.times[k]
+      #print(this.time)
+      timeSet <- subset(tempSpeed, time == this.time)
+      if(nrow(timeSet)>1){
+        if (var(timeSet$X0)==0 | var(timeSet$X1)==0){
+          speedDensities$times[[k]] <- 0  
+          #print("here variance")
         }
-        this.player@densities[[j]] <- speedDensities
+        else{
+          dens <- kde2d(timeSet$X0,timeSet$X1,
+                        h = c(ifelse(bandwidth.nrd(timeSet$X0) < 0.001, 0.1, bandwidth.nrd(timeSet$X0)),
+                              ifelse(bandwidth.nrd(timeSet$X1) < 0.001, 0.1, bandwidth.nrd(timeSet$X1))),
+                        n = c(107,70),
+                        lims = c(-53.5,53.5,-35,35))
+          #dens_smoothed <- dens$z %>% 
+          #  as_tibble() %>%
+          #  pivot_longer(cols = everything(), names_to = "col", values_to = "val") %>% 
+          #  mutate(x = rep(dens$x, each = 70), # EDIT: fixed, these were swapped
+          #         y = rep(dens$y, 107))
+          speedDensities$times[[k]] <- dens 
+        }
       }
-      players[[i]] <- this.player
+      else{
+        #print(timeSet)
+        speedDensities$times[[k]] <- 0
+      }
+      
     }
-  return(players)
+    this.player$densities[[j]] <- speedDensities
+  }
+  return(this.player)
 }
 
-trans <- read.csv("C:/Users/David/Desktop/player_movement_gliders.csv")
-gliders <- team(name = "Gliders2016",players = findDensitiesTeam(trans,"Gliders2016"))
-rm(trans)
-trans <- read.csv("C:/Users/David/Desktop/player_movement_helios16.csv")
-helios16 <- team(name = "HELIOS2016",players = findDensitiesTeam(trans,"HELIOS2016"))
-#rm(trans)
-trans <- read.csv("C:/Users/David/Desktop/player_movement_helios17.csv")
-helios17 <- team(name = "HELIOS2017",players = findDensitiesTeam(trans,"HELIOS2017"))
-#rm(trans)
-trans <- read.csv("C:/Users/David/Desktop/player_movement_oxsy.csv")
-oxsy <- team(name = "Oxsy" ,players = findDensitiesTeam(trans,"Oxsy"))
-#rm(trans)
-trans <- read.csv("C:/Users/David/Desktop/player_movement_hfut.csv")
-hfut <- team(name = "HfutEngine2017",players = findDensitiesTeam(trans,"HfutEngine2017"))
-#rm(trans)
-#teams <- list(gliders,helios16,helios17,oxsy,hfut)
+gliders = findDensitiesTeam("Gliders2016")
+helios16 = findDensitiesTeam("HELIOS2016")
 
 # now we draw the dominant regions using these densities
 
@@ -460,7 +590,6 @@ hfut <- team(name = "HfutEngine2017",players = findDensitiesTeam(trans,"HfutEngi
 #take subset to demo
 match = subset(df,matchID == 5)
 one_frame = subset(match, player !=1 & frame == 100)
-teamsList <- c("Gliders2016","HELIOS2016","HELIOS2017","Oxsy","HfutEngine2017")
 
 temp <- subset(trans, team == "HELIOS2017" & player == 5 & speedGroup == 5 & time == 5)
 tempDens <- kde2d(temp$X0,temp$X1,n=c(107,70),lims = c(-53.5,53.5,-35,35))
