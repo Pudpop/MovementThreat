@@ -383,6 +383,49 @@ soccerPitch() +
                arrow = arrow(length = unit(0.1, "cm")),
                show.legend = F)
 
+soccerPitch() +
+  #fte_theme()+
+  scale_color_manual(values=c(pal[5],pal[2],pal[4]))+
+  scale_fill_manual(values=c(pal[9],pal[2],pal[4]))+
+  coord_fixed()+
+  labs(x="",y="")+
+  geom_point(data = subset(match,frame==94),
+             mapping=aes(x=x,y=y,color=as.factor(team)),
+             position = 'jitter',
+             show.legend = F)+
+  geom_segment(data = subset(match,frame==94),
+               mapping=aes(x=x,xend = x+vX*scale,yend=y+vY*scale,y=y,color=as.factor(team)),
+               arrow = arrow(length = unit(0.1, "cm")),
+               show.legend = F)+
+  geom_text(data = subset(match,frame==94 & !(action == "")),
+            mapping=aes(x=x,y=y,label = action))
+
+
+p <- soccerPitch() +
+  #fte_theme()+
+  scale_color_manual(values=c(pal[5],pal[2],pal[4]))+
+  scale_fill_manual(values=c(pal[9],pal[2],pal[4]))+
+  coord_fixed()+
+  labs(x="",y="")+
+  geom_point(data = subset(match,frame<1000),
+             mapping=aes(x=x,y=y,color=as.factor(team)),
+             position = 'jitter',
+             show.legend = F)+
+  geom_segment(data = subset(match,frame<1000),
+               mapping=aes(x=x,xend = x+vX*scale,yend=y+vY*scale,y=y,color=as.factor(team)),
+               arrow = arrow(length = unit(0.1, "cm")),
+               show.legend = F)+
+  geom_text(data = subset(match,frame<1000),
+            mapping=aes(x=x,y=y,label = action))+
+  transition_states(
+    states = frame,
+    transition_length = 0.1,
+    state_length = 0,
+    wrap = FALSE
+  ) 
+
+anim <- animate(p, fps = 10,nframes=998)
+
 ##Brefeld
 
 #-----------------------------------------------------#

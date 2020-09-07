@@ -2,11 +2,13 @@ import numpy as np
 import pandas as pd
 import os
 import math
+pd.options.mode.chained_assignment = None  # default='warn'
 
 main_direc = "C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data"
 gt_direc = main_direc + "/groundtruth"
 events_direc = main_direc + "/moving_cyrus/"
 matches_direc = main_direc + "/matches_formatted"
+match_name = "20170905233547-CYRUS_2-vs-HfutEngine2017_1"
 
 #loop through all files in directory
 #print("Processing .csv files")
@@ -140,16 +142,105 @@ def extractEvents(filename = "C:/Users/David/OneDrive/Documents/Work/Thesis/Code
     #reshape data into long format.
     events = pd.wide_to_long(events, i="frame", j='id', stubnames="p")
     events = events.reset_index()
-    events.columns = ["frame","player","state"]
+    events.columns = ["frame","player","action"]
 
     #remove NANs
-    events = events.loc[events['state'].isin(["k","gk","gt","t"])]
+    events = events.loc[events['action'].isin(["k","gk","gt","t","kg"])]
 
-    return(events)    
+    return(events)     
+
+def classifyKicks(data):
+    frames = data.loc[data['action'] == "k"]
+    frames = frames['frame']
+    frames = data.loc[data['frame'].isin(frames)]
+    
+    for level in frames.frame.unique():
+        sub = frames.loc[frames.frame == level]
+        kicker = sub.loc[frames['action'] == "k"]
+        
+        player_name = kicker.iloc[0,8]
+        team = kicker.iloc[0,16]
+        teammates = sub.loc[sub['player'].isin(list(range(13,24)))]
+        opp = sub.loc[sub['player'].isin(list(range(2,13)))]
+        opp_gk = sub.loc[sub['player'] == 2]
+        goal_bot = [0,35-20.15]
+        goal_top = [0,35+20.15]  
+        kick_position = kicker.iloc[0,9:11]
+        
+        if (len(kicker) > 1):
+            print("too many kickers")
+            continue
+        else:
+            if (team == "l"):
+                opp_gk = sub.loc[sub['player'] == 13]
+                opp = teammates
+                teammates = sub.loc[sub['player'].isin(list(range(2,13)))]
+                goal_bot = [107,35-20.15]
+                goal_top = [107,35+20.15]
+                
+        #check if player in final third
+        final_third = (kick_position[0]>70)
+        if (team == "r"):
+            final_third = (kick_position[0]<35)
+                
+        #check if angle of ball trajectory is toward goal
+        angle_top = math.atan2(goal_top[1]-kick_position[1],goal_top[0]-kick_position[0])
+        angle_bot = math.atan2(goal_bot[1]-kick_position[1],goal_bot[0]-kick_position[0])
+        frame_after = kicker.iloc[0,2]+1
+        ball_direc = frames
+        for i in range(0,10):
+            ball_direc = data.loc[(data['frame']==frame_after+i) & (data['player'] == 1),['vX','vY']]
+            if (len(ball_direc)==1):
+                break
+            if (len(ball_direc)>1):
+                ball_direc = ball_direc.iloc[0,:]
+                break
+        if (len(ball_direc) == 0):
+            print("no more values to determine ball direction")
+            continue
+        angle_ball = math.atan2(ball_direc[1],ball_direc[0])
+        goal_bound = (angle_top > angle_ball) & (angle_bot < angle_ball)
+
+        #check if teammates in front of player
+        asc = (team == "r")
+        teammates['xrank'] = teammates['x'].rank(ascending=asc)
+        rank = teammates.loc[teammates['player']==player_name].iloc[0,len(teammates.columns)-1]
+        #print(teammates.iloc[:,[8,9,19]])
+        most_advanced = False
+        close_teammate = False
+        kind_of_close_teammate = False
+        if (rank == teammates['xrank'].min()):
+            most_advanced = True
+        else:
+            adv_teammates = teammates.loc[teammates['xrank'] <= rank].loc[teammates['player']!=player_name]
+            #print(adv_teammates)
+            #print(kicker)
+            angles_team = adv_teammates.apply(lambda mate: math.atan2(mate.y-kicker.y,mate.x-kicker.x),axis=1)
+            if (any(pd.Series(angles_team).apply(lambda angle: angle-ball_direc < 0.1))):
+                close_teammate = True
+            if (any(pd.Series(angles_team).apply(lambda angle: angle-ball_direc < 0.8))):
+                kind_of_close_teammate = True                
+        
+        if (not most_advanced):
+            if (goal_bound and final_third and not (close_teammate)):
+                data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "shot" 
+                continue
+            if (goal_bound and not (final_third and kind_of_close_teammate)):
+                data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "shot" 
+                continue
+        else:
+            if (goal_bound):
+                data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "shot" 
+                continue
+        data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "pass"
+
+    return(data)
+    
 
 def processMatch(direc,matchNo,matchName):
     gt = loadGroundtruth(matchNo,direc + matchName + "-groundtruth.csv")
     
+    print("Done with GT")
     left_team_name = matchName.split('-')[1].split('_')[0]
     right_team_name = matchName.split('-')[3].split('_')[0] 
     
@@ -159,5 +250,14 @@ def processMatch(direc,matchNo,matchName):
     events = events.drop_duplicates()
 
     combined = pd.merge(gt,events,on = ["frame","player"],how="left")
+    
+    combined['x'].astype('float64')
+    combined['y'].astype('float64')
+    combined['vX'].astype('float64')
+    combined['vY'].astype('float64')
+    combined['speed'].astype('float64')
+    print("Done with Events")
+    
+    combined = combined.drop_duplicates(subset=['frame','player'])
     
     return(combined)
