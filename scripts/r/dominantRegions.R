@@ -87,6 +87,8 @@ reach_brefeld <- function(param,momo,timesList = times){
   posx=2
   posy=3
   
+  precision <- c(rep(0.999,20),rep(0.99,20),rep(0.95,10),rep(0.9,10),rep(0.5,9))
+  
   this.player = (as.numeric(param[1])-2) %% 11 + 1
   
   this.team = 2
@@ -110,10 +112,8 @@ reach_brefeld <- function(param,momo,timesList = times){
                         y = dens$y,
                         z = dens$z,
                         levels = c(quantile(x = dens$z %>%
-                                              log() %>%
                                               as.vector(),
-                                            probs = 0.9)[[1]] %>%
-                                     exp()))
+                                            probs = precision[time_delta_index])[[1]]))
     if (length(cl) == 0){
       cl <- data.frame(x = param[2]-53.5,y=param[3]-35)
       posx=1
@@ -207,7 +207,7 @@ synthesize <- function(index,parts=partialRR){
 }
 
 mom <- list(gliders,helios16)
-test <- cbind(one_frame[,c(2,9,10,11,12,14,16)],rep(times[69],22))
+test <- cbind(one_frame[,c(2,9,10,11,12,14,16)],rep(times[38],22))
 part <- data.frame(x=numeric(),y=numeric(),id=numeric())
 for (i in 1:22){
   temp <- reach_brefeld(test[i,],mom)
@@ -229,7 +229,7 @@ partial <- function(time, one_frame,momo = fujsug){
   #apply reachable region function to all players
   if (length(momo) > 1){
     #rr <- apply(FUN=reach_brefeld,MARGIN=1, X = cbind(one_frame[,c(2,9,10,11,12,14,16)],rep(time,22)),mm = momo)
-    test <- cbind(one_frame[,c(2,9,10,11,12,14,16)],rep(times[69],22))
+    test <- cbind(one_frame[,c(2,9,10,11,12,14,16)],rep(time,22))
     rr <- data.frame(x=numeric(),y=numeric(),id=numeric())
     for (i in 1:22){
       temp <- reach_brefeld(test[i,],momo)
@@ -256,7 +256,7 @@ partial <- function(time, one_frame,momo = fujsug){
   #find convex hulls of each region
   hulls <- df.sf %>%
     group_by( id ) %>%
-    summarise( geometry = st_combine( geometry ) ,do_union=F) %>%
+    summarise( geometry = st_combine( geometry ) ,do_union=F,.groups="drop") %>%
     st_convex_hull() %>%
     suppressWarnings()
 
@@ -400,22 +400,22 @@ soccerPitch() +
   geom_text(data = subset(match,frame==94 & !(action == "")),
             mapping=aes(x=x,y=y,label = action))
 
-
+match = read.csv("C:/Users/David/Desktop/events_test.csv")
 p <- soccerPitch() +
   #fte_theme()+
   scale_color_manual(values=c(pal[5],pal[2],pal[4]))+
   scale_fill_manual(values=c(pal[9],pal[2],pal[4]))+
   coord_fixed()+
   labs(x="",y="")+
-  geom_point(data = subset(match,frame<1000),
+  geom_point(data = match,
              mapping=aes(x=x,y=y,color=as.factor(team)),
              position = 'jitter',
              show.legend = F)+
-  geom_segment(data = subset(match,frame<1000),
+  geom_segment(data = match,
                mapping=aes(x=x,xend = x+vX*scale,yend=y+vY*scale,y=y,color=as.factor(team)),
                arrow = arrow(length = unit(0.1, "cm")),
                show.legend = F)+
-  geom_text(data = subset(match,frame<1000),
+  geom_text(data = match,
             mapping=aes(x=x,y=y,label = action))+
   transition_states(
     states = frame,
@@ -424,7 +424,8 @@ p <- soccerPitch() +
     wrap = FALSE
   ) 
 
-anim <- animate(p, fps = 10,nframes=998)
+anim <- animate(p, fps = 10,nframes=5998)
+anim
 
 ##Brefeld
 
@@ -456,8 +457,8 @@ get_dens <- function(team,player,speed,time){
   return(team$players[[player]]$densities[[speed]]$times[[time]])
 }
 
-teams = c("Gliders2016","HELIOS2016","Rione","CYRUS","MT2017",
-          "Oxsy","FRAUNIted","HELIOS2017","HfutEngine2017","CSUYunlu")
+teams = c("Gliders2016","HELIOS2016")#,"Rione","CYRUS","MT2017",
+          #"Oxsy","FRAUNIted","HELIOS2017","HfutEngine2017","CSUYunlu")
 
 ##transform the datapoint to the origin version
 transform <- function(ps,pt,pu){
@@ -583,12 +584,12 @@ findDensityPlayer <- function(data,this.team,this.player.id,this.times,average =
   this.player <- player(id = as.character(this.player.id),
                         team = as.character(this.team),
                         densities = list(length = length(speeds)))
-  temp <- subset(data, team == this.team & player == this.player.id)
   for (j in 1:length(speeds)){
+    #browser()
     this.speedGroup <- speeds[j]
     #print(this.speedGroup)
-    tempSpeed <- subset(temp, speedGroup == this.speedGroup)
-    speedDensities <- speed(speed = j,times = list(length = length(times)))
+    tempSpeed <- subset(data, speedGroup == this.speedGroup)
+    speedDensities <- speed(speed = j,times = list(length = length(this.times)))
     #browser()
     for (k in 1:length(this.times)){
       this.time <- this.times[k]
@@ -603,7 +604,7 @@ findDensityPlayer <- function(data,this.team,this.player.id,this.times,average =
           dens <- kde2d(timeSet$X0,timeSet$X1,
                         h = c(ifelse(bandwidth.nrd(timeSet$X0) < 0.001, 0.1, bandwidth.nrd(timeSet$X0)),
                               ifelse(bandwidth.nrd(timeSet$X1) < 0.001, 0.1, bandwidth.nrd(timeSet$X1))),
-                        n = c(107,70),
+                        n = c(428,280),
                         lims = c(-53.5,53.5,-35,35))
           #dens_smoothed <- dens$z %>% 
           #  as_tibble() %>%

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 import math
+import sys
 pd.options.mode.chained_assignment = None  # default='warn'
 
 main_direc = "C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data"
@@ -146,6 +147,9 @@ def extractEvents(filename = "C:/Users/David/OneDrive/Documents/Work/Thesis/Code
 
     #remove NANs
     events = events.loc[events['action'].isin(["k","gk","gt","t","kg"])]
+    
+    #rename players
+    events.player = events.player+1
 
     return(events)     
 
@@ -163,8 +167,8 @@ def classifyKicks(data):
         teammates = sub.loc[sub['player'].isin(list(range(13,24)))]
         opp = sub.loc[sub['player'].isin(list(range(2,13)))]
         opp_gk = sub.loc[sub['player'] == 2]
-        goal_bot = [0,35-20.15]
-        goal_top = [0,35+20.15]  
+        goal_bot = [0,35-9.15]
+        goal_top = [0,35+9.15]  
         kick_position = kicker.iloc[0,9:11]
         
         if (len(kicker) > 1):
@@ -175,8 +179,8 @@ def classifyKicks(data):
                 opp_gk = sub.loc[sub['player'] == 13]
                 opp = teammates
                 teammates = sub.loc[sub['player'].isin(list(range(2,13)))]
-                goal_bot = [107,35-20.15]
-                goal_top = [107,35+20.15]
+                goal_bot = [107,35-9.15]
+                goal_top = [107,35+9.15]
                 
         #check if player in final third
         final_third = (kick_position[0]>70)
@@ -195,17 +199,17 @@ def classifyKicks(data):
             if (len(ball_direc)>1):
                 ball_direc = ball_direc.iloc[0,:]
                 break
-        if (len(ball_direc) == 0):
+        if (ball_direc.empty):
             print("no more values to determine ball direction")
             continue
-        angle_ball = math.atan2(ball_direc[1],ball_direc[0])
+
+        angle_ball = math.atan2(ball_direc.iloc[0,1],ball_direc.iloc[0,0])
         goal_bound = (angle_top > angle_ball) & (angle_bot < angle_ball)
 
         #check if teammates in front of player
         asc = (team == "r")
         teammates['xrank'] = teammates['x'].rank(ascending=asc)
         rank = teammates.loc[teammates['player']==player_name].iloc[0,len(teammates.columns)-1]
-        #print(teammates.iloc[:,[8,9,19]])
         most_advanced = False
         close_teammate = False
         kind_of_close_teammate = False
@@ -213,26 +217,28 @@ def classifyKicks(data):
             most_advanced = True
         else:
             adv_teammates = teammates.loc[teammates['xrank'] <= rank].loc[teammates['player']!=player_name]
-            #print(adv_teammates)
-            #print(kicker)
             angles_team = adv_teammates.apply(lambda mate: math.atan2(mate.y-kicker.y,mate.x-kicker.x),axis=1)
-            if (any(pd.Series(angles_team).apply(lambda angle: angle-ball_direc < 0.1))):
+            if (any(pd.Series(angles_team).apply(lambda angle: angle-angle_ball < 0.1))):
                 close_teammate = True
-            if (any(pd.Series(angles_team).apply(lambda angle: angle-ball_direc < 0.8))):
+            if (any(pd.Series(angles_team).apply(lambda angle: angle-angle_ball < 1.2))):
                 kind_of_close_teammate = True                
         
         if (not most_advanced):
             if (goal_bound and final_third and not (close_teammate)):
                 data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "shot" 
                 continue
-            if (goal_bound and not (final_third and kind_of_close_teammate)):
+            if (goal_bound and not (final_third) and not (kind_of_close_teammate)):
                 data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "shot" 
                 continue
         else:
             if (goal_bound):
                 data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "shot" 
                 continue
-        data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "pass"
+        if (sub.loc[sub['player'] == 1,['speed']].iloc[0,0] > 1):
+            data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "pass"
+        else:
+            data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "dribble"
+        
 
     return(data)
     
@@ -260,4 +266,14 @@ def processMatch(direc,matchNo,matchName):
     
     combined = combined.drop_duplicates(subset=['frame','player'])
     
+    combined = classifyKicks(combined)
+    
     return(combined)
+
+if __name__ == "__main__":
+    direc = sys.argv[0]
+    matchName = sys.argv[1]
+    match = sys.argv[2]
+    out_direc = sys.argv[3]
+    processMatch(direc,match,matchName).to_csv(out_direc)
+    
