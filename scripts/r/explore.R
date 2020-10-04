@@ -131,16 +131,27 @@ cent <- match %>%
         ctm(FUN=centroid)
 p1 <- ggplot()+
   ctm_plot(pos)+
-  #ctm_plot(cent)+
+  geom_vline(data = subset(match,state %in% c(" goal_l"," goal_r") & player ==1),
+             aes(xintercept = frame/10,
+                 color = state),show.legend = F)+
   fte_theme()+
-  scale_fill_manual(values = c(pal[6],pal[10]))+
-  labs(fill = "Possession",x = "Seconds Passed During Game",y="Range of Average in Seconds")
+  scale_fill_manual(values = c(pal[2],pal[3]))+
+  scale_color_manual(values = c(pal[2],pal[4]))+
+  labs(fill = "Possession",x = "Seconds Passed During Game",y="Range of Average in Seconds")+
+  theme(legend.position="bottom")+
+  guides(fill=guide_legend(title.vjust = 0.8))
 p2 <- ggplot()+
   ctm_plot(cent)+
+  geom_vline(data = subset(match,state %in% c(" goal_l"," goal_r") & player ==1),
+             aes(xintercept = frame/10,
+                 color = state),show.legend = F)+
   fte_theme()+
-  scale_fill_manual(values = c(pal[6],pal[10]))+
-  labs(fill = "Territorial Advantage",x = "Seconds Passed During Game",y="Range of Average in Seconds")
-
+  scale_fill_manual(values = c(pal[2],pal[3]))+
+  scale_color_manual(values = c(pal[2],pal[4]))+
+  labs(fill = "Territorial Advantage",x = "Seconds Passed During Game",y="Range of Average in Seconds")+
+  theme(legend.position="bottom")+
+  guides(fill=guide_legend(title.vjust = 0.8))
+p2
 ggarrange(p1,p2,nrow=1,ncol=2)
 
 #average pass positions
