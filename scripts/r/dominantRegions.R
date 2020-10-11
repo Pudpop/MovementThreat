@@ -426,7 +426,7 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
       return(Reduce('+',plyr::alply(.data = frame,
                          .fun = get_positional_data,
                          .margins=1,
-                         time=this.time)[1:22])  )
+                         time=this.time)[1:22]))
     }
     
     discounted_sum <- function(mats,gamma){
