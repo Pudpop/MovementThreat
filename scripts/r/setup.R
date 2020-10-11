@@ -25,42 +25,6 @@ pal <- c("#A6CEE3","#1F78B4","#b2df8a","#33a02c",
          "#fb9a99","#fb9a99","#fdbf6f","#ff7f00",
          "#cab2d6","#6a3d9a","#ffff99")
 
-reader <- function(path = 'C:/Users/David/OneDrive/Documents/Work/Thesis/Code/data',
-                  filename = 'ten_games_formatted.csv'){
-
-    #format data as necessary
-        #set wd to where data is
-        setwd(path)
-
-        df = read.csv(filename)
-        df = df[,-c(12)]
-        df = df[,c(1,12,seq(2,11))]
-        #df <- cbind(cumsum(!duplicated(df[5:6])),df)
-        colnames(df) = c("matchID","player","frame","state","score_left","score_right","left_team","right_team",
-                           "x","y","vX","vY")
-
-        #clean up
-        df$x<-as.numeric(df$x)+53.5
-        df$y<-as.numeric(df$y)+35
-        df$vX<-as.numeric(df$vX)
-        df$vY<-as.numeric(df$vY)
-        df$speed <- sqrt((df$vX)^2+(df$vY)^2)
-        df$state <- as.factor(df$state)
-        #df$speedGroup <- as.numeric(cut(df$speed, c(0,0.03,0.073,0.13,0.24,0.48,0.6),include.lowest = T))
-        df$speedGroup <- as.numeric(cut(df$speed, c(0,seq(0.001,0.55,by=0.05),10),include.lowest = T))
-        df$time <- as.numeric(df$frame)/10
-        df$team <- cut(df$player,c(0,1,12,23),include.lowest = T)
-        levels(df$team) <- c("b","l","r")
-        df$final_score_left <- sub(".*?_", "", df$left_team)
-        df$final_score_right <- sub(".*?_", "", df$right_team)
-        df$left_team <- gsub("(.*)_.*", "\\1", df$left_team)
-        df$left_team <- as.factor(df$left_team)
-        df$right_team <- gsub("(.*)_.*", "\\1", df$right_team)
-        df$right_team <- as.factor(df$right_team)
-        
-        return(df)
-}
-
 fte_theme <- function(font = c("serif","serif"), pal = brewer.pal("Greys",n=9),sizes = c(8,12,14)){
 
   # Generate the colors for the chart procedurally with RColorBrewer
