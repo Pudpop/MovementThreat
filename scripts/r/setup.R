@@ -4,6 +4,7 @@
   library(foreach) #parallel
   library(doParallel) #parallel
   library(MASS) # kde
+  library(rhdf5)#data
 
 #plots
   library(ggplot2)

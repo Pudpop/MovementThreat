@@ -1,7 +1,7 @@
 #global constants
   scale = 8.2/0.6
-  x_segmentation = 20
-  y_segmentation = 14
+  x_segmentation = 40
+  y_segmentation = 28
   pitch_length = 107
   pitch_width = 70
   x_bin_width = pitch_length/x_segmentation
@@ -315,24 +315,40 @@ get_positional_data <- function(row,time,
   y <- floor((row["y"] %>% as.numeric)/y_bin_width)
   team <- ifelse(row["team"] == "l",1,-1) %>% as.numeric()
   
-  filename <- paste0(path,"/time_",time,"/speed_",speed,"/angle_",angle,"/",x,"_",y,".csv.gz")
+  #filename <- paste0(path,"/time_",time,"/speed_",speed,"/angle_",angle,"/",x,"_",y,".csv.gz")
   
-  get_kde <- function(mm){
-    kde2d(mm$pux,mm$puy,
-          h = c(ifelse(bandwidth.nrd(mm$pux) < 0.001, 0.1, bandwidth.nrd(mm$pux)),
-                ifelse(bandwidth.nrd(mm$puy) < 0.001, 0.1, bandwidth.nrd(mm$puy))),
-          n = c(x_segmentation,y_segmentation),
-          lims = c(0,pitch_length,0,pitch_width))
-  }
+  #get_kde <- function(mm){
+  #  kde2d(mm$pux,mm$puy,
+  #        h = c(ifelse(bandwidth.nrd(mm$pux) < 0.001, 0.1, bandwidth.nrd(mm$pux)),
+  #              ifelse(bandwidth.nrd(mm$puy) < 0.001, 0.1, bandwidth.nrd(mm$puy))),
+  #        n = c(x_segmentation,y_segmentation),
+  #        lims = c(0,pitch_length,0,pitch_width))
+  #}
+  
+  filename <- paste0(path,"/time",".hdf5")
+  
   
   readFileTC <- function(file) {
     out <- tryCatch({
-        team*((read.csv(file) %>% get_kde())$z)
+        temp <- h5read(file,paste0("time_",time))[,x*y_segmentation + y + 1,angle+1,speed+1] %>% 
+                  matrix(nrow=x_segmentation,byrow=T)
+        s <- sum(temp)
+        if (s == 0){
+          return(temp)
+        }
+        else{
+          return(temp/s)
+        }
+        #team*((read.csv(file) %>% get_kde())$z)
       },
       error=function(cond) {
-        return(matrix(0L,nrow=20,ncol=14))
+        print(cond)
+        return(matrix(0L,nrow=x_segmentation,ncol=y_segmentation))
       },
-      warning = function(cond){return(matrix(0L,nrow=20,ncol=14))}
+      warning = function(cond){
+        return(NA)
+        #return(matrix(0L,nrow=x_segmentation,ncol=y_segmentation))
+        }
     )    
     return(out)
   }
@@ -387,12 +403,45 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
     return(voronoi)
   }
   else if (model == "ppc"){
-    time_mat <- function(this.time){
-      return(Reduce('+',plyr::alply(.data = frame,
-                         .fun = get_positional_data,
-                         .margins=1,
-                         time=this.time)[1:22]))
+    
+    cut_xy <- function(x,is.x=TRUE){
+      if(is.x){
+        return( floor((x %>% as.numeric)/x_bin_width))
+      }
+      return(floor((x %>% as.numeric)/y_bin_width))
     }
+    
+    get_time <- function(time){
+      path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data/test/positional"
+      temp <- h5read(paste0(path,"/time",".hdf5"),
+                     paste0("time_",time))
+      
+      get_position <- function(row){
+        if (row[1,4] == 'r'){
+          return((-1*temp[,row[1,3] %>% as.integer,
+                          row[1,2]  %>% as.integer,
+                          row[1,1]  %>% as.integer]) %>% 
+                   matrix(nrow=x_segmentation,byrow=T))
+        }
+        return(temp[,row[1,3] %>% as.integer,
+                    row[1,2]  %>% as.integer,
+                    row[1,1]  %>% as.integer]%>% 
+                 matrix(nrow=x_segmentation,byrow=T))
+      }
+      
+      mats <- (frame$x %>% cut_xy) * y_segmentation + frame$y %>% cut_xy(is.x=F)
+      
+      
+      Reduce('+',plyr::alply(.data = data.frame(speedGroup = frame$speedGroup %>% as.integer,
+                                                angleGroup = frame$angleGroup %>% as.integer,
+                                                position = mats %>% as.integer,
+                                                team = frame$team),
+                          .fun = get_position,
+                          .margins=1)[1:22]) %>%
+        return()
+    }
+    
+    
     
     discounted_sum <- function(mats,gamma){
       sum = mats[1]
@@ -403,8 +452,11 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
       return(sum)
     }
     
-    mat <- c(1,10,20,30,40,45) %>%
-        lapply(FUN = time_mat) %>%
+    #mat <- get_time(0)
+    
+    mat <- c(0,1,2,3,4,5,6) %>%
+        #lapply(FUN = time_mat) %>%
+        lapply(FUN = get_time) %>%
         #Reduce(f=function(x,y) x+0.9*y)
         Reduce(f='+')  
         #discounted_sum(gamma = 0.8)
@@ -414,21 +466,21 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
 }
 
 #plot the ptch control/dominant regions
-plot_pc <- function(pc,frame,sf=TRUE){
+plot_pc <- function(pc,frame,sf=FALSE){
   geom_pc <- function(df){
     colfunc <- colorRampPalette(c(pal[4],pal[3],"white",pal[1],pal[2]))
     if(sf){
-      return(scale_fill_manual(values=c(pal[2],pal[4]))+
-               geom_sf(data=df,mapping = aes(fill=as.factor(team)),alpha=0.2,show.legend = F))
+      return(list(scale_fill_manual(values=c(pal[2],pal[4])),
+               geom_sf(data=df,mapping = aes(fill=as.factor(team)),alpha=0.2,show.legend = F)))
     }
-    return(scale_fill_gradientn(colours=c(pal[4],pal[3],"white",pal[1],pal[2]),
+    return(list(scale_fill_gradientn(colours=c(pal[4],pal[3],"white",pal[1],pal[2]),
                                 values = c(0,0.49,0.5,0.51,1),
-                                limits = c(0,1))+
-             coord_fixed()+
-             labs(x="",y="")+
+                                limits = c(0,1)),
+             coord_fixed(),
+             labs(x="",y=""),
              geom_raster(data = df %>% reshape2::melt(),
                          mapping = aes((Var1-0.5)*x_bin_width,(Var2-0.5)*y_bin_width,fill=value),
-                         alpha=0.5,interpolate=TRUE))
+                         alpha=0.5,interpolate=TRUE)))
   }
   return(soccerPitch() +
     scale_color_manual(values=c(pal[2],pal[4]))+
@@ -448,14 +500,16 @@ plot_pc <- function(pc,frame,sf=TRUE){
 test <- function(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data/matches_formatted.zip",
                  file = "matches_formatted/cyrus2017-vs-Gliders2016/17-20170905234225-CYRUS_0-vs-Gliders2016_0.csv",
                  mm = "ppc"){
-  con = unz(path)
+  print("load") 
+  con = unz(description = path,filename = file)
   match <- read.csv(con)
+  #close(con)
   match <- match[,!(names(match) %in% c("X","index"))]
-  close(con)
   one_frame = subset(match,frame == 4000 & player != 1)
-  
-  if (is.null(mm)){
-    
-  }
+  rm(match)
+   
+  print("start")
+  calculate_pitch_control(one_frame,mm) %>% plot_pc(one_frame)
 }
 
+test()
