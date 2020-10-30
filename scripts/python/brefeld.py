@@ -53,13 +53,14 @@ def transformRowTriplets(row):
 
 class PPCTime(object):
 
-    def __init__(self,f):
+    def __init__(self):
         self.lock = threading.Lock()
-        self.file = f
+        self.file = FILE_DICT["time"]
 
     def process(self,position):
         def do_time(ind):
-            big_mat = self.file["time_" + str(ind)][:]
+            #print("here")
+            #big_mat = self.file["time_" + str(ind)][:]
             temp = position.loc[position['tD'] == TIMES[ind]]
             for pos in temp.groupby(['speedGroup','angleGroup']):
                 pos=pos[1]
@@ -71,13 +72,28 @@ class PPCTime(object):
                 yEnd = [x for x in list(pos['yEndBlock'].values) if str(x) != 'nan']
                 b = [(a*Y_SEGMENTATION + b)*NUM_CELLS + c*Y_SEGMENTATION + d for a,b,c,d in zip(x,y,xEnd,yEnd)]
                 b  = Counter(b)
-                for k in b.keys():
-                    if (math.floor(int(k)/NUM_CELLS) == 0):
-                        print(k)
-                    big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)][int(k)%NUM_CELLS] += b[k]
+                with self.lock:
+                    big_mat = self.file["time_" + str(ind)][:]
+                    for k in b.keys():
+                        if (ind == 0 and sp  == 1 and ang  == 1):
+                            if (math.floor(int(k)/NUM_CELLS) == 576):
+                                print(str(int(k)%NUM_CELLS) + " " + str(sp) + " " + str(ang) + " " + str(Counter(big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)])))
+                            #print(Counter(big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)]))
+                        big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)][int(k)%NUM_CELLS] += b[k]
+                        #print(Counter(big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)]))
+                        if (ind == 0 and sp  == 1 and ang  == 1):
+                            if (math.floor(int(k)/NUM_CELLS) == 576):
+                                print(str(int(k)%NUM_CELLS) + " " + str(sp) + " " + str(ang) + " " + str(Counter(big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)])))
 
-            with self.lock:
-                self.file["time_" + str(ind)][:] = big_mat
+            #with self.lock:
+            #    if (ind == 0):
+            #        print(Counter(self.file["time_" + str(ind)][0][0][576]))
+            #        print("    " + str(Counter(big_mat[0][0][576])))
+            #    self.file["time_" + str(ind)][:] = big_mat
+            #    if (ind == 0):
+            #        print("    "+str(Counter(self.file["time_" + str(ind)][4][0][576])))
+        #for i in range(len(TIMES)):
+        #    do_time(i)
         pool = multiprocessing.Pool(7)
         pool.apply_async(do_time,list(range(len(TIMES))))
         pool.close()
@@ -220,8 +236,8 @@ def extract_triplets_into_matrices(filename,zp) :
                 df_temp  = form_temp(df)
                 temp = pd.concat([temp,df_temp])
             if (not temp.empty):
-                f = FILE_DICT["time"]
-                time_writer = PPCTime(f)
+                #f = FILE_DICT["time"]
+                time_writer = PPCTime()
                 time_writer.process(temp)
 
                 for ind3 in range(len(TIMES)):
@@ -238,7 +254,7 @@ def extract_triplets_into_matrices(filename,zp) :
                         player_writer = BrefeldPlayer(fb,ind3,player_name)
                         for frame in  [d for _, d in St.groupby(['speedGroup'])]:
                             player_writer.process(frame)
-            print("\t" + str(time.process_time() - player_time))
+            #print("\t" + str(time.process_time() - player_time))
     print("Time " + str(ind1) + ": " + str(time.process_time() - start_time))
 
 def make_matrices(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/",wf=True):
