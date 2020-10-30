@@ -307,7 +307,7 @@ form_syn <- function(index,this.partialRR){
 
 #get csv file for positional data
 get_positional_data <- function(row,time,
-                                path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data/test/positional"){
+                                path = "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/positional"){
   #print(row)
   speed <- row["speedGroup"] %>%as.numeric()
   angle <- row["angleGroup"] %>% as.numeric()
@@ -412,7 +412,7 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
     }
     
     get_time <- function(time){
-      path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data/test/positional"
+      path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/positional"
       temp <- h5read(paste0(path,"/time",".hdf5"),
                      paste0("time_",time))
       
@@ -497,7 +497,7 @@ plot_pc <- function(pc,frame,sf=FALSE){
 }
 
 #function to test algorithms
-test <- function(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data/matches_formatted.zip",
+test <- function(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/data/matches_formatted.zip",
                  file = "matches_formatted/cyrus2017-vs-Gliders2016/17-20170905234225-CYRUS_0-vs-Gliders2016_0.csv",
                  mm = "ppc"){
   print("load") 
@@ -509,7 +509,8 @@ test <- function(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data
   rm(match)
    
   print("start")
-  calculate_pitch_control(one_frame,mm) %>% plot_pc(one_frame)
+  return(calculate_pitch_control(one_frame,mm))
 }
 
-test()
+
+pc <- test()
