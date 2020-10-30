@@ -10,9 +10,9 @@ from itertools import compress
 from fnmatch import fnmatch
 pd.options.mode.chained_assignment = None  # default='warn'
 
-MAIN_DIREC = "C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data/"
+MAIN_DIREC = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/"
 EVENTS_FILE_NAME = MAIN_DIREC + "events.csv"
-        
+
 def loadGroundtruth(matchNo,
                     zp,
                     folderName,
@@ -24,37 +24,37 @@ def loadGroundtruth(matchNo,
     for i in range(1,24):
         #index for player
         b = [i]*8
-    
+
         #each variable column j  is Vj + player index i
         next = ["{}{}".format(a_, b_) for a_, b_ in zip([f'V{i}' for i in range(1,9)], b)]
-    
+
         #concat
         vars = np.concatenate([vars,next])
-    
+
     all_cols = np.concatenate([['matchNo','time','state','score_left','score_right','left_team','right_team'],vars])
-    
+
     #cols to turn into id later on for reformatting with wide_to_long
-    cols = ['matchNo','time','state','score_left','score_right','left_team','right_team']    
+    cols = ['matchNo','time','state','score_left','score_right','left_team','right_team']
 
     temp = matchName
     matchName = matchName.replace("Ri-one","Rione")
     matchName = matchName.replace("FRA-UNIted","FRAUNIted")
-    matchName = matchName.replace("CSU_Yunlu","CSUYunlu")    
-    
+    matchName = matchName.replace("CSU_Yunlu","CSUYunlu")
+
     left_team_name = ""
     right_team_name = ""
     left_team_score = 0
     right_team_score = 0
-    
+
     #variables for filename
     left_team_name = matchName.split('-')[1].split('_')[0]
-    left_team_score = matchName.split('-')[1].split('_')[1]        
+    left_team_score = matchName.split('-')[1].split('_')[1]
     right_team_name = matchName.split('-')[3].split('_')[0]
-    right_team_score = matchName.split('-')[3].split('_')[1]    
-    
+    right_team_score = matchName.split('-')[3].split('_')[1]
+
     matchName = temp
     #read in file
-    data = pd.read_csv(zp.open(folderName + "round-" + str(roundNo) + "/" + matchName + "-groundtruth.csv"))        
+    data = pd.read_csv(zp.open(folderName + "round-" + str(roundNo) + "/" + matchName + "-groundtruth.csv"))
     #add in team names
     data.insert(4,'leftteam',matchName.split('-')[1].split('_')[0])
     data.insert(5,'rightteam',matchName.split('-')[3].split('_')[0])
@@ -84,32 +84,32 @@ def loadGroundtruth(matchNo,
     data.columns = ['matchNo', 'index', 'frame', 'state', 'score_left', 'score_right',
            'left_team', 'right_team', 'player','x','y','vX','vY']
     data = data.drop_duplicates(subset=['frame','player'],keep="last")
-    
+
     #change bounds of x and y
     data['x'] += 53.5
     data['y'] += 35
-    
+
     #add speeds and group them into discrete speed categories
     #velocity function
     def getSpeed(row):
-        return(math.sqrt(row['vX']**2 + row['vY']**2))    
+        return(math.sqrt(row['vX']**2 + row['vY']**2))
     data['speed'] = data.apply(getSpeed,axis=1)
-    bins= [0.000, 0.001,  0.051,  0.101,  0.151,  0.201,  0.251,  0.301,  0.351,  0.401,  0.451,  0.501, 10.000] 
+    bins= [0.000, 0.001,  0.051,  0.101,  0.151,  0.201,  0.251,  0.301,  0.351,  0.401,  0.451,  0.501, 10.000]
     labels = list(range(1,13))
     data['speedGroup'] = pd.cut(data['speed'], bins=bins, labels=labels,include_lowest = True)
-    
+
     #add time column
     data['time'] = data['frame'].apply(lambda x : x/10)
-    
+
     #get teams
     data['team'] = pd.cut(data['player'],bins = [0,1,12,23],labels = ['b','l','r'],include_lowest=True)
-    
+
     #fix team names and add score
     data['left_team'] = left_team_name
     data['right_team'] = right_team_name
     data['final_score_left'] = left_team_score
     data['final_score_right'] = right_team_score
-    
+
     #get direction of players
     def getAngle(row):
         angle = math.atan2(row['vY'],row['vX'])
@@ -117,18 +117,18 @@ def loadGroundtruth(matchNo,
             angle = math.pi - angle
         return(angle)
     data['angle'] = data.apply(getAngle,axis=1)
-    bins= [0.000, math.pi/4, math.pi/2, 3*math.pi/4,math.pi,5*math.pi/4,3*math.pi/2,7*math.pi/4,2*math.pi] 
-    labels = list(range(1,9)) 
-    data['angleGroup'] = pd.cut(data['angle'], bins=bins, labels=labels,include_lowest = True)    
+    bins= [0.000, math.pi/4, math.pi/2, 3*math.pi/4,math.pi,5*math.pi/4,3*math.pi/2,7*math.pi/4,2*math.pi]
+    labels = list(range(1,9))
+    data['angleGroup'] = pd.cut(data['angle'], bins=bins, labels=labels,include_lowest = True)
 
     data = data.sort_values(by=['frame'])
     list_of_df = [d for _, d in data.groupby(['frame'])]
-    
+
     #show distance to ball
     def getDist(frame):
         distances = pd.DataFrame(distance_matrix(frame.iloc[:,9:11], frame.iloc[:,9:11]), index=frame['player'], columns=frame['player']).iloc[:,0]
         return(distances)
-    
+
     #show who is in possession
     def getCurPos(frame):
         mins = 'none'
@@ -137,7 +137,7 @@ def loadGroundtruth(matchNo,
         if (ball < 1.4):
             mins = np.argmin(dist.iloc[1:]) + 2
         return(pd.DataFrame({'possession' : [mins]*23, 'distToBall' : dist}))
-    
+
     #extra information about ball
     def ballInf(frame):
         return(pd.DataFrame(np.array(np.tile(frame.loc[frame['player']==1,['x','y','speed']].iloc[0,:],reps=23)).reshape(23,3),
@@ -147,14 +147,14 @@ def loadGroundtruth(matchNo,
                       pd.concat(map(ballInf,list_of_df),ignore_index=True),
                       pd.concat(map(getCurPos,list_of_df),ignore_index=True)],
                      axis=1)
-    return(data)  
+    return(data)
 
 def extractPlayerTeam(player_number):
     if (player_number < 13):
         return("l")
     else:
         return("r")
-    
+
 def extractPlayerID(player_number):
     return((player_number-2) % 11 + 1)
 
@@ -165,7 +165,7 @@ def extractEvents(filename,zp):
     except:
         print("error in events")
         return(None)
-    
+
     #remove unknown columns, since we cant reliably extract information from them
     events = events.iloc[:,[0] + list(range(5,181))]
     #remove unnecessary information
@@ -184,18 +184,18 @@ def extractEvents(filename,zp):
 
     #remove NANs
     events = events.loc[events['action'].isin(["k","gk","gt","t","kg","tg"])]
-    
+
     #rename players
     events.player = events.player+1
 
-    return(events)     
+    return(events)
 
 def classifyKicks(data):
     #label goalkeepers
     gkevents = data.loc[data['action'].isin(["gk","gt","kg","tg"])]
     gks = gkevents.player.unique()
     data['isGK'] = data['player'].isin(gks)
-    
+
     #check if both teams have a keeper
     teamLKeeper = data.loc[data['player'] < 13].loc[data['player']>1,['isGK']].all(axis=None)
     if (not teamLKeeper):
@@ -206,37 +206,41 @@ def classifyKicks(data):
     if (not teamRKeeper):
         avePos = data.loc[data['player'].isin([13,14,15,16,17,18,19,20,21,22,23]),['player','x']].groupby('player').mean()
         player_name = np.argmax(avePos)+13
-        data.loc[data['player'] == player_name,['isGK']] = True      
-    
+        data.loc[data['player'] == player_name,['isGK']] = True
+
+    #convert gk events to normal events
+    data.loc[data['action'].isin(["kg"]),['action']] = 'k'
+    data.loc[data['action'].isin(["tg"]),['action']] = 't'
+
     #get all events
     frames = data.loc[data['action'] == "k"]
     frames = frames['frame']
     frames = data.loc[data['frame'].isin(frames)]
-    
+
     for level in frames.frame.unique():
         #get all data from this frame
         sub = frames.loc[frames.frame == level]
         #find who did the event
         kicker = sub.loc[frames['action'] == "k"]
-        
+
         #if there are multiple kickersdon't classify
         if (len(kicker) > 1):
-            continue        
-        
+            continue
+
         #extract information
         player_name = kicker.iloc[0,8]
-        
+
         #if ball travelling slowly then its a dribble
         if (sub.loc[sub['player'] == 1,['speed']].iloc[0,0] <= 1):
             data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "dribble"
-            continue   
-        
+            continue
+
         #more information
         team = kicker.iloc[0,16]
         def ifelse(boo, yes, no):
             if (boo):
                 return(yes)
-            return(no)    
+            return(no)
         leftteam = (team=='l')
         left = sub.loc[sub['player'].isin(list(range(2,13)))]
         right = sub.loc[sub['player'].isin(list(range(13,24)))]
@@ -245,9 +249,9 @@ def classifyKicks(data):
                            right)
         opp = ifelse(leftteam,
                      right,
-                     left)        
+                     left)
         opp_gk = opp.loc[opp['isGK'] == True]
-        
+
         goal_bot = ifelse(leftteam,
                           [107,35-9.15],
                           [0,35-9.15])
@@ -255,12 +259,12 @@ def classifyKicks(data):
                           [107,35+9.15] ,
                           [0,35+9.15])
         kick_position = kicker.iloc[0,9:11]
-                
+
         #check if player in final third
         final_third = ifelse(leftteam,
                              kick_position[0]>70,
                              kick_position[0]<35)
-                
+
         #check if angle of ball trajectory is toward goal
         angle_top = math.atan2(goal_top[1]-kick_position[1],goal_top[0]-kick_position[0])
         angle_bot = math.atan2(goal_bot[1]-kick_position[1],goal_bot[0]-kick_position[0])
@@ -278,11 +282,11 @@ def classifyKicks(data):
 
         angle_ball = math.atan2(ball_direc.iloc[0,1],ball_direc.iloc[0,0])
         goal_bound = (angle_top > angle_ball) & (angle_bot < angle_ball)
-        
+
         if (not goal_bound):
             data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "pass"
             continue
-        
+
         #check if teammates in front of player
         asc = (team == "r")
         teammates['xrank'] = teammates['x'].rank(ascending=asc)
@@ -292,8 +296,8 @@ def classifyKicks(data):
             print(teammates)
             sys.exit()
         if (rank == teammates['xrank'].min()):
-            data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "shot" 
-            continue                
+            data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "shot"
+            continue
         else:
             adv_teammates = teammates.loc[teammates['xrank'] <= rank].loc[teammates['player']!=player_name]
             angles_team = adv_teammates.apply(lambda mate: math.atan2(mate.y-kicker.y,mate.x-kicker.x),axis=1)
@@ -303,127 +307,170 @@ def classifyKicks(data):
                                         False)
             except:
                 print(str(rank) +" : "+ str(teammates['xrank']))
-                continue            
+                continue
             if (final_third and not (close_teammate)):
-                data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "shot" 
-                continue            
-            kind_of_close_teammate = ifelse(any(pd.Series(angles_team).apply(lambda angle: angle-angle_ball < 1.2)),
-                                            True,
-                                            False)
-            if (not (final_third) and not (kind_of_close_teammate)):
-                data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "shot" 
-                continue            
-            
+                data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "shot"
+                continue
+            #kind_of_close_teammate = ifelse(any(pd.Series(angles_team).apply(lambda angle: angle-angle_ball < 1.2)),
+            #                                True,
+            #                                False)
+            #if (not (final_third) and not (kind_of_close_teammate)):
+            #    data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "shot"
+            #    continue
+
         #classify as pass if not shot or dribble
         data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "pass"
-        
+
 
     return(data)
-    
+
 
 def processMatch(zp,matchNo,folder,roundNo,matchName,files):
-    
+
     #preliminary formatting
     sta = time.process_time()
     gt = loadGroundtruth(matchNo,zp,folder,roundNo,matchName)
-    
+
     print("Done with GT:\t" + str(time.process_time()-sta))
-    
+
     #fix team names
-    #print(matchName)  
+    #print(matchName)
     temp = matchName
     matchName = matchName.replace("Ri-one","Rione")
     matchName = matchName.replace("FRA-UNIted","FRAUNIted")
-    matchName = matchName.replace("CSU_Yunlu","CSUYunlu")    
-    
+    matchName = matchName.replace("CSU_Yunlu","CSUYunlu")
+
     eventsTime = time.process_time()
     #get event data
     left_team_name = matchName.split('-')[1].split('_')[0]
-    right_team_name = matchName.split('-')[3].split('_')[0] 
-    
+    right_team_name = matchName.split('-')[3].split('_')[0]
+
     matchName = temp
-    
+
     #files = [direc + matchName + "-" + left_team_name + "_" + str(x) + "-moving.csv" for x in range(1,12)]+[direc + matchName + "-" + right_team_name + "_" + str(x) + "-moving.csv" for x in range(1,12)]
     evFiles = list(compress(files,[not any(s in filename for s in ["landmark","groundtruth","parameter"]) for filename in files]))
-    
+
     def tempEx(f):
         return(extractEvents(f,zp))
-    
+
     events = pd.Series(evFiles).apply(tempEx).values.tolist()
-    events = [i for i in events if all(i)] 
+    events = [i for i in events if all(i)]
     events = pd.concat(events)
     events = events.drop_duplicates()
 
     #add events to groundtruth
     combined = pd.merge(gt,events,on = ["frame","player"],how="left")
-    
+
     #format some things
     combined['x'].astype('float64')
     combined['y'].astype('float64')
     combined['vX'].astype('float64')
     combined['vY'].astype('float64')
     combined['speed'].astype('float64')
-    
+
     combined = combined.drop_duplicates(subset=['frame','player'])
-    
+
     combined = classifyKicks(combined)
     print("Classify Time:\t" + str(time.process_time() - eventsTime))
-    
+
     lastStart = time.process_time()
-      
-    
+
+
     #end position of each event
-    evSub = combined.loc[combined['action'].isin(["pass","dribble","shot","gk","gt","kg","tg","t"])]
+    evSub = combined.loc[combined['action'].isin(["pass","dribble","shot"])]
     evSub.ballPosX = evSub.ballPosX.shift(1)
     evSub.ballPosY = evSub.ballPosY.shift(1)
     evSub = evSub.loc[:,['frame','player','ballPosX','ballPosY']]
     evSub.columns = ['frame','player','eventEndPosX','eventEndPosY']
     combined = pd.merge(combined,evSub,on = ["frame","player"],how="left")
-    
+
     #receiving player of event
-    evSub = combined.loc[combined['action'].isin(["pass","dribble","shot","gk","kg"])] 
-    evSub['recPlayer'] = evSub.player.shift(-1)    
+    evSub = combined.loc[combined['action'].isin(["pass","dribble","shot"])]
+    evSub['recPlayer'] = evSub.player.shift(-1)
     evSub = evSub.loc[:,['frame','player','recPlayer']]
     combined = pd.merge(combined,evSub,on = ["frame","player"],how="left")
-    
+
     #fix dribbles based on recplayer
-    evSub = combined.loc[combined['action'].isin(["pass","dribble","shot","gk","gt","kg","tg"])] 
+    evSub = combined.loc[combined['action'].isin(["pass","dribble","shot"])]
     for i in range(0,len(evSub)):
         if (evSub.iloc[i,:]['player'] == evSub.iloc[i,:]['recPlayer'] ):
             player_name = evSub.iloc[i,:]['player']
             level = evSub.iloc[i,:]['frame']
             combined.loc[(combined['frame'] == level) & (combined['player'] == player_name),['action']] = "dribble"
+
+    #fix shots based on when goals occur
+    evSub = combined.loc[combined['state'].isin([" goal_l"," goal_r"])]
+    evEvs = combined.loc[combined['action'].isin(["pass","dribble","shot"])]
+    for i in range(0,len(evSub)):
+        frame = ev.iloc[i,:]['frame']
+        team = "r"
+        if (evSub.iloc[i,:]['state'] == " goal_l"):
+            team = "l"
+        pre_ev = combined.loc[combined['frame'] <= frame]
+        for j in range(len(pre_ev)-1,0,-1):
+            if (pre_ev.iloc[j,:]['team'] == team):
+                shot_time = pre_ev.iloc[j,:]['frame']
+                player = pre_ev.iloc[j,:]['player']
+                combined.loc[combined['frame'] == shot_time & combined['player'] == player,['action']] = "shot"
+                combined.loc[combined['frame'] == shot_time & combined['player'] == player,['recPlayer']] = "goal"
+                break
+
+    #add success of events
+    combined['eventSuccess'] = combined.action
+    evSub = combined.loc[combined['action'].isin(["pass","dribble","shot"])]
+    for i in range(0,len(evSub)):
+        frame = evSub.iloc[i,:]['frame']
+        player  = evSub.iloc[i,:]['player']
+        rec = evSub.iloc[i,:]['recPlayer']
+        ev = evSub.iloc[i,:]['action']
+        if (ev == "shot"):
+            if (rec == "goal"):
+                combined.loc[combined['frame'] = frame & combined['player'] == player,['eventSuccess']] == True
+                continue
+            combined.loc[combined['frame'] = frame & combined['player'] == player,['eventSuccess']] == False
+            continue
+        teammates = ifelse(int(player)<13,
+                           list(range(2,13)),
+                           list(range(13,24)))
+        if (rec in teammates):
+            combined.loc[combined['frame'] = frame & combined['player'] == player,['eventSuccess']] == True
+            continue
+        combined.loc[combined['frame'] = frame & combined['player'] == player,['eventSuccess']] == False
+
+
+
+
     print("Last Time:\t" + str(time.process_time()-lastStart))
     #print("Done with Events")
-    
+
     return(combined)
 
 def make_events_database():
     write_file_name = EVENTS_FILE_NAME
-    
+
     def get_events(game,zp):
         df = pd.read_csv(zp.open(game))
         df = df.loc[df['action'].isin(['pass','dribble','shot','k','kg','gk'])]
         return(df)
-    
+
     with zipfile.ZipFile(MAIN_DIREC + "matches_formatted.zip") as z:
-        for name in z.namelist():  
+        for name in z.namelist():
             if fnmatch(name,"*.csv"):
                 print(name)
-                if (os.path.isfile(write_file_name)): 
+                if (os.path.isfile(write_file_name)):
                     with open(write_file_name,'a') as fd:
-                        fd.write(get_events(name,z).to_csv(header=False, index = False,line_terminator='\n') )                    
+                        fd.write(get_events(name,z).to_csv(header=False, index = False,line_terminator='\n') )
                 else:
                     with open(write_file_name,'a') as fd:
-                        fd.write(get_events(name,z).to_csv(header=True, index = False,line_terminator='\n') )                    
+                        fd.write(get_events(name,z).to_csv(header=True, index = False,line_terminator='\n') )
 
 def process_all_matches():
     count = 0
     f = []
-    for path,dirnames,filenames in  os.walk('C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data/archive/'):
+    for path,dirnames,filenames in  os.walk(MAIN_DIREC + 'archive/'):
         f.extend(filenames)
     for zipf in  f:
-        with zipfile.ZipFile('C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data/archive/' + zipf) as z:
+        with zipfile.ZipFile(MAIN_DIREC + 'archive/' + zipf) as z:
             for filename in z.namelist():
                 if len(filename.split("/"))<3:
                     #print(filename)
@@ -433,10 +480,14 @@ def process_all_matches():
                             continue
                         #print([i for i in matchFiles if "-groundtruth.csv" in i][0].replace("-groundtruth.csv",""))
                         matchName = [i for i in matchFiles if "-groundtruth.csv" in i][0].replace("-groundtruth.csv","").split("/")[2]
-                        folder = 'C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data/matches_formatted/' + matchFiles[0].split("/")[0] + "/"
+                        folder = MAIN_DIREC + 'matches_formatted/' + matchFiles[0].split("/")[0] + "/"
                         if not os.path.exists(folder):
-                            os.mkdir(folder)  
+                            os.mkdir(folder)
                         #print(folder+filename +str(count)+"-" + matchName + ".csv")
                         if not os.path.isfile(folder+str(count)+"-" + matchName + ".csv"):
                             processMatch(z,count,filename,j,matchName,matchFiles).to_csv(folder+str(count)+"-"+matchName+".csv")
                         count+=1
+
+if __name__ == "__main__":
+    process_all_matches()
+    make_events_database()

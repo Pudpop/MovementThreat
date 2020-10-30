@@ -514,3 +514,27 @@ test <- function(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/data/matc
 
 
 pc <- test()
+
+
+
+player_to_state <- function(row,
+                            path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/matches_formatted.zip"){
+  get_info <- function(row){
+    return(c(row$matchNo[1],row$frame[1]))
+  }
+  
+  read_file <- function(info){
+    matchNo <- info[1]
+    frameNo <- info[2]
+    file <- grep(paste0('.*/',matchNo,'-'),unzip(path, list=TRUE)$Name,value=T)
+    con = unz(description = path,filename = file)
+    match <- read.csv(con)
+    #close(con)
+    match <- match[,!(names(match) %in% c("X","index"))]
+    one_frame = subset(match,frame == frameNo)
+    return(one_frame)
+  }
+  
+  return(read_file(get_info(row)))
+}
+
