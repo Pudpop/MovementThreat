@@ -13,6 +13,12 @@ pd.options.mode.chained_assignment = None  # default='warn'
 MAIN_DIREC = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/"
 EVENTS_FILE_NAME = MAIN_DIREC + "events.csv"
 
+#util
+def ifelse(boo, yes, no):
+    if (boo):
+        return(yes)
+    return(no)
+
 def loadGroundtruth(matchNo,
                     zp,
                     folderName,
@@ -131,22 +137,26 @@ def loadGroundtruth(matchNo,
 
     #show who is in possession
     def getCurPos(frame):
+        frameNo = frame['frame'].values
+        players = frame['player'].values
         mins = 'none'
         ball = frame.loc[frame['player']==1,['speed']].iloc[0,0]
         dist = getDist(frame)
         if (ball < 1.4):
             mins = np.argmin(dist.iloc[1:]) + 2
-        return(pd.DataFrame({'possession' : [mins]*23, 'distToBall' : dist}))
+        df = pd.DataFrame({'possession' : [mins]*23, 'distToBall' : dist, 'frame' : frameNo,"player" : players})
+        return(df)
 
     #extra information about ball
     def ballInf(frame):
-        return(pd.DataFrame(np.array(np.tile(frame.loc[frame['player']==1,['x','y','speed']].iloc[0,:],reps=23)).reshape(23,3),
-                            columns = ['ballPosX','ballPosY','ballSpeed']))
-
-    data = pd.concat([data,
-                      pd.concat(map(ballInf,list_of_df),ignore_index=True),
-                      pd.concat(map(getCurPos,list_of_df),ignore_index=True)],
-                     axis=1)
+        main = pd.DataFrame(np.array(np.tile(frame.loc[frame['player']==1,['x','y','speed','angle']].iloc[0,:],reps=23)).reshape(23,4),
+                            columns = ['ballPosX','ballPosY','ballSpeed','ballAngle'])
+        player = pd.DataFrame({'ballPosX' : main['ballPosX'].values, 'ballPosY' : main['ballPosY'].values,
+                                'ballSpeed' : main['ballSpeed'].values, 'ballAngle' : main['ballAngle'].values,
+                                'frame' : frame['frame'].values, 'player' : frame['player'].values})
+        return(player)
+    data = pd.merge(data,pd.concat(map(ballInf,list_of_df),ignore_index=True),on=['frame','player'],how='left')
+    data = pd.merge(data,pd.concat(map(getCurPos,list_of_df),ignore_index=True),on=['frame','player'],how='left')
     return(data)
 
 def extractPlayerTeam(player_number):
@@ -237,10 +247,6 @@ def classifyKicks(data):
 
         #more information
         team = kicker.iloc[0,16]
-        def ifelse(boo, yes, no):
-            if (boo):
-                return(yes)
-            return(no)
         leftteam = (team=='l')
         left = sub.loc[sub['player'].isin(list(range(2,13)))]
         right = sub.loc[sub['player'].isin(list(range(13,24)))]
@@ -402,17 +408,17 @@ def processMatch(zp,matchNo,folder,roundNo,matchName,files):
     evSub = combined.loc[combined['state'].isin([" goal_l"," goal_r"])]
     evEvs = combined.loc[combined['action'].isin(["pass","dribble","shot"])]
     for i in range(0,len(evSub)):
-        frame = ev.iloc[i,:]['frame']
+        frame = evSub.iloc[i,:]['frame']
         team = "r"
         if (evSub.iloc[i,:]['state'] == " goal_l"):
             team = "l"
-        pre_ev = combined.loc[combined['frame'] <= frame]
+        pre_ev = combined.loc[combined['frame'] < frame]
         for j in range(len(pre_ev)-1,0,-1):
             if (pre_ev.iloc[j,:]['team'] == team):
                 shot_time = pre_ev.iloc[j,:]['frame']
                 player = pre_ev.iloc[j,:]['player']
-                combined.loc[combined['frame'] == shot_time & combined['player'] == player,['action']] = "shot"
-                combined.loc[combined['frame'] == shot_time & combined['player'] == player,['recPlayer']] = "goal"
+                combined.loc[(combined['frame'] == shot_time) & (combined['player'] == player),['action']] = "shot"
+                combined.loc[(combined['frame'] == shot_time) & (combined['player'] == player),['recPlayer']] = "goal"
                 break
 
     #add success of events
@@ -425,17 +431,17 @@ def processMatch(zp,matchNo,folder,roundNo,matchName,files):
         ev = evSub.iloc[i,:]['action']
         if (ev == "shot"):
             if (rec == "goal"):
-                combined.loc[combined['frame'] = frame & combined['player'] == player,['eventSuccess']] == True
+                combined.loc[(combined['frame'] == frame) & (combined['player'] == player),['eventSuccess']] == True
                 continue
-            combined.loc[combined['frame'] = frame & combined['player'] == player,['eventSuccess']] == False
+            combined.loc[(combined['frame'] == frame) & (combined['player'] == player),['eventSuccess']] == False
             continue
         teammates = ifelse(int(player)<13,
                            list(range(2,13)),
                            list(range(13,24)))
         if (rec in teammates):
-            combined.loc[combined['frame'] = frame & combined['player'] == player,['eventSuccess']] == True
+            combined.loc[(combined['frame'] == frame) & (combined['player'] == player),['eventSuccess']] == True
             continue
-        combined.loc[combined['frame'] = frame & combined['player'] == player,['eventSuccess']] == False
+        combined.loc[(combined['frame'] == frame) & (combined['player'] == player),['eventSuccess']] == False
 
 
 
@@ -490,4 +496,4 @@ def process_all_matches():
 
 if __name__ == "__main__":
     process_all_matches()
-    make_events_database()
+    #make_events_database()
