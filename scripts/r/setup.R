@@ -5,6 +5,7 @@
   library(doParallel) #parallel
   library(MASS) # kde
   library(rhdf5)#data
+  library(reshape2)
 
 #plots
   library(ggplot2)
@@ -19,12 +20,32 @@
   library(sf)
   library(sp)
   library(rgdal)
+  library(gstat)
   library(smoothr)
   library(igraph)
+  
+#global constants
+  scale = 8.2/0.6
+  x_segmentation = 40
+  y_segmentation = 28
+  pitch_length = 107
+  pitch_width = 70
+  x_bin_width = pitch_length/x_segmentation
+  y_bin_width = pitch_width/y_segmentation
+  num_cells <- x_segmentation*y_segmentation
+  teams = c("Gliders2016","HELIOS2016","Rione","CYRUS","MT2017",
+            "Oxsy","FRAUNIted","HELIOS2017","HfutEngine2017","CSUYunlu")
+  times <- c(0.1,0.5,1,2,3,4,5)
+  speeds <- seq(1,12)
+  angles <- as.matrix(seq(from = -pi, to = pi, by = pi/60))
+  angleGroups <- seq(1,8)
+  pc_times = c(1,5,10,20,30,40,45)
+  
   
 pal <- c("#A6CEE3","#1F78B4","#b2df8a","#33a02c",
          "#fb9a99","#fb9a99","#fdbf6f","#ff7f00",
          "#cab2d6","#6a3d9a","#ffff99")
+myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")))
 
 fte_theme <- function(font = c("serif","serif"), pal = brewer.pal("Greys",n=9),sizes = c(8,12,14)){
 

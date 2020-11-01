@@ -1,22 +1,3 @@
-#global constants
-  scale = 8.2/0.6
-  x_segmentation = 40
-  y_segmentation = 28
-  pitch_length = 107
-  pitch_width = 70
-  x_bin_width = pitch_length/x_segmentation
-  y_bin_width = pitch_width/y_segmentation
-  #list of robocup teams
-  teams = c("Gliders2016","HELIOS2016","Rione","CYRUS","MT2017",
-            "Oxsy","FRAUNIted","HELIOS2017","HfutEngine2017","CSUYunlu")
-  #list of times to be used
-  times <- c(seq(0.1,2,by = 0.05),seq(2.1,4,by=0.1),seq(4.2,6,by=0.2))#,seq(0.6,2,by=0.1),seq(1.2,5,by=0.2),c(6,7))
-  #speedgroup names
-  speeds <- seq(1,12)
-  #angles to wrap around
-  angles <- as.matrix(seq(from = -pi, to = pi, by = pi/60))
-  #pc times
-  pc_times = c(1,5,10,20,30,40,45)
 
 #taki's movement model function
 taki <- function(angle = 0,origin = c(0,0),v = c(0,0),t = 1,a = 4.2,scale=8.2/0.6){
@@ -513,7 +494,13 @@ test <- function(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/data/matc
 }
 
 
-pc <- test()
+path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/matches_formatted"
+file = "/cyrus2017-vs-Gliders2016/13-20170905233758-CYRUS_3-vs-Gliders2016_8.csv"
+match <- read.csv(paste0(path,file))
+match <- match[,!(names(match) %in% c("X","index"))]
+
+
+#pc <- test()
 
 
 

@@ -59,13 +59,14 @@ class PPCTime(object):
 
     def process(self,position):
         def do_time(ind):
-            #print("here")
+            print("here")
             #big_mat = self.file["time_" + str(ind)][:]
             temp = position.loc[position['tD'] == TIMES[ind]]
             for pos in temp.groupby(['speedGroup','angleGroup']):
                 pos=pos[1]
                 sp = int(pos['speedGroup'].values[0])
                 ang = int(pos['angleGroup'].values[0])
+                #print([sp,ang],flush=T)
                 x = [x for x in list(pos['xBlock'].values) if str(x) != 'nan']
                 y = [x for x in list(pos['yBlock'].values) if str(x) != 'nan']
                 xEnd = [x for x in list(pos['xEndBlock'].values) if str(x) != 'nan']
@@ -73,18 +74,29 @@ class PPCTime(object):
                 b = [(a*Y_SEGMENTATION + b)*NUM_CELLS + c*Y_SEGMENTATION + d for a,b,c,d in zip(x,y,xEnd,yEnd)]
                 b  = Counter(b)
                 with self.lock:
-                    big_mat = self.file["time_" + str(ind)][:]
+                    #big_mat = self.file["time_" + str(ind)][:]
+                    #f = h5py.File(PATH_PPC + "/time.hdf5","a",libver='latest')
+                    #big_mat = f['time_' + str(ind)][:]
+                    f = h5py.File(PATH_PPC + "/time.hdf5","a",libver='latest')
                     for k in b.keys():
-                        if (ind == 0 and sp  == 1 and ang  == 1):
-                            if (math.floor(int(k)/NUM_CELLS) == 576):
-                                print(str(int(k)%NUM_CELLS) + " " + str(sp) + " " + str(ang) + " " + str(Counter(big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)])))
-                            #print(Counter(big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)]))
-                        big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)][int(k)%NUM_CELLS] += b[k]
-                        #print(Counter(big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)]))
-                        if (ind == 0 and sp  == 1 and ang  == 1):
-                            if (math.floor(int(k)/NUM_CELLS) == 576):
-                                print(str(int(k)%NUM_CELLS) + " " + str(sp) + " " + str(ang) + " " + str(Counter(big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)])))
 
+                        val = f['time_' + str(ind)][sp-1,ang-1,math.floor(int(k)/NUM_CELLS),int(k)%NUM_CELLS]+b[k]
+                        if (ind == 0 and sp  == 1 and ang  == 1):
+                            if (math.floor(int(k)/NUM_CELLS) == 576):
+                                print(str(int(k)%NUM_CELLS) + " " + str(sp) + " " + str(ang) + " " + str(Counter(f['time_' + str(ind)][sp-1,ang-1,math.floor(int(k)/NUM_CELLS)])),flush = True)
+                            #print("before : " + str(f['time_' + str(ind)][sp-1][ang-1][math.floor(int(k)/NUM_CELLS)][int(k)%NUM_CELLS]))
+                            #print("b + val: " + str(b[k]+val))
+                            #print(Counter(big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)]))
+                        f['time_' + str(ind)][sp-1,ang-1,math.floor(int(k)/NUM_CELLS),int(k)%NUM_CELLS] = val
+                    f.close()
+                        #f = h5py.File(PATH_PPC + "/time.hdf5","r",libver='latest')
+                        #print(Counter(big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)]))
+                        #if (ind == 0 and sp  == 1 and ang  == 1):
+                        #    if (math.floor(int(k)/NUM_CELLS) == 576):
+                        #        print(str(int(k)%NUM_CELLS) + " " + str(sp) + " " + str(ang) + " " + str(Counter(f['time_' + str(ind)][sp-1][ang-1][math.floor(int(k)/NUM_CELLS)])))
+                        #    print("after  : " + str(f['time_' + str(ind)][sp-1][ang-1][math.floor(int(k)/NUM_CELLS)][int(k)%NUM_CELLS]))
+                        #f.close()
+                    #f.close()
             #with self.lock:
             #    if (ind == 0):
             #        print(Counter(self.file["time_" + str(ind)][0][0][576]))
@@ -93,7 +105,7 @@ class PPCTime(object):
             #    if (ind == 0):
             #        print("    "+str(Counter(self.file["time_" + str(ind)][4][0][576])))
         #for i in range(len(TIMES)):
-        #    do_time(i)
+        #   do_time(i)
         pool = multiprocessing.Pool(7)
         pool.apply_async(do_time,list(range(len(TIMES))))
         pool.close()
@@ -270,10 +282,17 @@ def make_matrices(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/",w
             if (len(list(FILE_DICT[team + '/player_' + str(i)].keys())) == 0):
                 for j in range(1,13):
                     FILE_DICT[team + '/player_' + str(i)].create_dataset(str(j), (len(TIMES),NUM_CELLS), dtype='i2')
-
+    #for key in FILE_DICT.keys():
+    #    FILE_DICT[key].close()
+    FILE_DICT['time'].close()
+    count = 0
     with zipfile.ZipFile(path + "matches_formatted.zip") as z:
         for file in list(filter(lambda x:x.endswith(".csv"),z.namelist() )):
-            extract_triplets_into_matrices(file,z)
+            if(count == 0):
+                extract_triplets_into_matrices(file,z)
+            count+=1
+
+
 
 if __name__ == '__main__':
     make_matrices()

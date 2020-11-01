@@ -137,6 +137,7 @@ def loadGroundtruth(matchNo,
 
     #show who is in possession
     def getCurPos(frame):
+        frame = frame.sort_values(by='player')
         frameNo = frame['frame'].values
         players = frame['player'].values
         mins = 'none'
@@ -240,6 +241,12 @@ def classifyKicks(data):
         #extract information
         player_name = kicker.iloc[0,8]
 
+        #if player is too far away don't count as action
+        #print([player_name,level,sub.loc[sub['player'] == player_name,['distToBall']].iloc[0,0]])
+        if (sub.loc[sub['player'] == player_name,['distToBall']].iloc[0,0] > 5.0):
+            data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = ""
+            continue
+
         #if ball travelling slowly then its a dribble
         if (sub.loc[sub['player'] == 1,['speed']].iloc[0,0] <= 1):
             data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "dribble"
@@ -258,12 +265,13 @@ def classifyKicks(data):
                      left)
         opp_gk = opp.loc[opp['isGK'] == True]
 
+        goal_allowance = 15
         goal_bot = ifelse(leftteam,
-                          [107,35-9.15],
-                          [0,35-9.15])
+                          [107,35-goal_allowance],
+                          [0,35-goal_allowance])
         goal_top = ifelse(leftteam,
-                          [107,35+9.15] ,
-                          [0,35+9.15])
+                          [107,35+goal_allowance] ,
+                          [0,35+goal_allowance])
         kick_position = kicker.iloc[0,9:11]
 
         #check if player in final third
@@ -290,6 +298,9 @@ def classifyKicks(data):
         goal_bound = (angle_top > angle_ball) & (angle_bot < angle_ball)
 
         if (not goal_bound):
+            data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "pass"
+            continue
+        if (not final_third):
             data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "pass"
             continue
 
@@ -379,14 +390,17 @@ def processMatch(zp,matchNo,folder,roundNo,matchName,files):
     combined = classifyKicks(combined)
     print("Classify Time:\t" + str(time.process_time() - eventsTime))
 
+
+    #print(combined.loc[(combined['action'].isin(["pass","dribble","shot"])) & combined['frame'] == 1296])
+
     lastStart = time.process_time()
 
 
     #end position of each event
     evSub = combined.loc[combined['action'].isin(["pass","dribble","shot"])]
-    evSub.ballPosX = evSub.ballPosX.shift(1)
-    evSub.ballPosY = evSub.ballPosY.shift(1)
-    evSub = evSub.loc[:,['frame','player','ballPosX','ballPosY']]
+    evSub.x = evSub.x.shift(-1)
+    evSub.y = evSub.y.shift(-1)
+    evSub = evSub.loc[:,['frame','player','x','y']]
     evSub.columns = ['frame','player','eventEndPosX','eventEndPosY']
     combined = pd.merge(combined,evSub,on = ["frame","player"],how="left")
 
@@ -412,9 +426,14 @@ def processMatch(zp,matchNo,folder,roundNo,matchName,files):
         team = "r"
         if (evSub.iloc[i,:]['state'] == " goal_l"):
             team = "l"
-        pre_ev = combined.loc[combined['frame'] < frame]
+
+        pre_ev = evEvs.loc[evEvs['frame'] < frame]
         for j in range(len(pre_ev)-1,0,-1):
-            if (pre_ev.iloc[j,:]['team'] == team):
+            kick_position = pre_ev.iloc[j,:]['x']
+            final_third = ifelse(team == "l",
+                                 kick_position>70,
+                                 kick_position<35)
+            if (pre_ev.iloc[j,:]['team'] == team and final_third):
                 shot_time = pre_ev.iloc[j,:]['frame']
                 player = pre_ev.iloc[j,:]['player']
                 combined.loc[(combined['frame'] == shot_time) & (combined['player'] == player),['action']] = "shot"
@@ -431,17 +450,17 @@ def processMatch(zp,matchNo,folder,roundNo,matchName,files):
         ev = evSub.iloc[i,:]['action']
         if (ev == "shot"):
             if (rec == "goal"):
-                combined.loc[(combined['frame'] == frame) & (combined['player'] == player),['eventSuccess']] == True
+                combined.loc[(combined['frame'] == frame) & (combined['player'] == player),['eventSuccess']] = True
                 continue
-            combined.loc[(combined['frame'] == frame) & (combined['player'] == player),['eventSuccess']] == False
+            combined.loc[(combined['frame'] == frame) & (combined['player'] == player),['eventSuccess']] = False
             continue
         teammates = ifelse(int(player)<13,
                            list(range(2,13)),
                            list(range(13,24)))
         if (rec in teammates):
-            combined.loc[(combined['frame'] == frame) & (combined['player'] == player),['eventSuccess']] == True
+            combined.loc[(combined['frame'] == frame) & (combined['player'] == player),['eventSuccess']] = True
             continue
-        combined.loc[(combined['frame'] == frame) & (combined['player'] == player),['eventSuccess']] == False
+        combined.loc[(combined['frame'] == frame) & (combined['player'] == player),['eventSuccess']] = False
 
 
 
@@ -495,5 +514,5 @@ def process_all_matches():
                         count+=1
 
 if __name__ == "__main__":
-    process_all_matches()
-    #make_events_database()
+    #process_all_matches()
+    make_events_database()

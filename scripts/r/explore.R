@@ -174,3 +174,24 @@ soccerPitch()+
   fte_theme() +
   coord_fixed()+
   labs(x="",y="")
+
+
+anim <- soccerPitch() +
+  scale_color_manual(values=c(pal[5],pal[2],pal[4]))+
+  labs(x="",y="")+
+  coord_fixed()+
+  geom_point(data = match %>% subset(frame %in% seq(2900,3050,by=1)),
+             mapping=aes(x=x,y=y,color=as.factor(team)),
+             position = 'jitter',
+             show.legend = F)+
+  geom_segment(data = match %>% subset(frame %in% seq(2900,3050,by=1)),
+               mapping=aes(x=x,xend = x+vX*scale,yend=y+vY*scale,y=y,color=as.factor(team)),
+               arrow = arrow(length = unit(0.1, "cm")),
+               show.legend = F)+
+  geom_text(data = match %>% subset(frame %in% seq(2900,3050,by=1)),
+            mapping=aes(x=x,y=y,color=as.factor(team),label = action),
+            position = 'jitter',
+            show.legend = F)+
+  transition_states(states = frame)
+
+animate(anim,nframes=150,fps=5)
