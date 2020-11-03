@@ -338,6 +338,7 @@ get_positional_data <- function(row,time,
 
 #calculate pitch control/dominant regions return sf object
 calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
+  ball = frame %>% subset(player == 1)
   frame <- frame %>% subset(player!=1)
   if (isTRUE(all.equal(model,fujsug)) | isTRUE(all.equal(model,taki)) | length(model)>1){
     cl <- makeCluster(nproc)
@@ -392,62 +393,204 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
       return(floor((x %>% as.numeric)/y_bin_width))
     }
     
-    get_time <- function(time){
+    ball_pos <- c((ball$x %>% cut_xy)+1,(ball$y %>% cut_xy(is.x=FALSE))+1)
+    
+    get_time <- function(time,ballDo = F){
       path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/positional"
+      if (ballDo){
+        path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/ball"
+      }
+      
       temp <- h5read(paste0(path,"/time",".hdf5"),
                      paste0("time_",time))
       
       get_position <- function(row){
-        if (row[1,4] == 'r'){
-          return((-1*temp[,row[1,3] %>% as.integer,
-                          row[1,2]  %>% as.integer,
-                          row[1,1]  %>% as.integer]) %>% 
-                   matrix(nrow=x_segmentation,byrow=T))
+        if (row[4] == 'r'){
+          orig <- row[3] %>% as.integer
+          orig.x <- floor(orig/y_segmentation)
+          orig.x <- x_segmentation - orig.x
+          orig.y <- orig%%y_segmentation
+          orig.y <- y_segmentation - orig.y
+          orig <- (orig.x-1)*y_segmentation + orig.y
+          mattt <- (temp[,orig %>% as.integer,
+                          row[2]  %>% as.integer,
+                          row[1]  %>% as.integer]) %>% 
+                   matrix(nrow=x_segmentation,byrow=T)
+          mattt <- mattt[,c(ncol(mattt):1)]
+          mattt <- mattt[c(nrow(mattt):1),]
+          summatt <- sum(mattt)
+          if (summatt >0){
+            return(mattt/(summatt))  
+          }
+          return(matrix(0,nrow=x_segmentation,ncol=y_segmentation))
         }
-        return(temp[,row[1,3] %>% as.integer,
-                    row[1,2]  %>% as.integer,
-                    row[1,1]  %>% as.integer]%>% 
-                 matrix(nrow=x_segmentation,byrow=T))
+        mattt <- temp[,(row[3]%>% trimws %>% as.integer+1),
+                      row[2]  %>% as.integer,
+                      row[1]  %>% as.integer]%>% 
+          matrix(nrow=x_segmentation,byrow=T)
+        summatt <- sum(mattt)
+        if (summatt >0){
+          return(mattt/(summatt))  
+        }
+        return(matrix(0,nrow=x_segmentation,ncol=y_segmentation))
+      }
+      if (ballDo){
+        mats <- get_position(c(ball$speedGroup,ball$angleGroup,(ball_pos[1]-1)*y_segmentation + ball_pos[2]-1,"b"))
+        h5closeAll()
+        return(mats)
+      }
+      else{
+        mats <- (frame$x %>% cut_xy) * y_segmentation + frame$y %>% cut_xy(is.x=F)
+        mats <- data.frame(speedGroup = frame$speedGroup %>% as.integer,
+                           angleGroup = frame$angleGroup %>% as.integer,
+                           position = mats %>% as.integer,
+                           team = frame$team) %>% 
+          apply(FUN = get_position,MARGIN=1)
+        h5closeAll()
+        return(mats)
       }
       
-      mats <- (frame$x %>% cut_xy) * y_segmentation + frame$y %>% cut_xy(is.x=F)
+      #Reduce('+',plyr::alply(.data = data.frame(speedGroup = frame$speedGroup %>% as.integer,
+      #                                          angleGroup = frame$angleGroup %>% as.integer,
+      #                                          position = mats %>% as.integer,
+      #                                          team = frame$team),
+      #                    .fun = get_position,
+      #                    .margins=1)[1:22]) %>%
       
-      
-      Reduce('+',plyr::alply(.data = data.frame(speedGroup = frame$speedGroup %>% as.integer,
-                                                angleGroup = frame$angleGroup %>% as.integer,
-                                                position = mats %>% as.integer,
-                                                team = frame$team),
-                          .fun = get_position,
-                          .margins=1)[1:22]) %>%
-        return()
     }
-    
     
     
     discounted_sum <- function(mats,gamma){
-      sum = mats[1]
-      browser()
+      s = mats[[1]]/7
+      #browser()
       for (i in 1:length(mats)){
-        sum = sum + (gamma^i)*mats[i]
+        s = s + (gamma^i)*mats[[i]]/7
       }
-      return(sum)
+      return(s)
     }
+    
+    dist_mat <- function(row,ball){
+      d = dist(matrix(c(row[1:2],ball),byrow=T,nrow=2),method="manhattan")
+      if (d == 0){
+        return(1)
+      }
+      if (d != dist(matrix(c(row[1:2],ball),byrow=T,nrow=2))){
+        x_dist <- abs(row[1]-ball[1])
+        y_dist <- abs(row[2]-ball[2])
+        return(min(ceiling(max(c(x_dist,y_dist))),7))  
+      }
+      return(min(ceiling(d),7))
+    }
+    
+    get_cell_influence <- function(coords,mm){
+      time <- coords[3] %>% as.integer
+      x <- coords[1] %>% as.integer
+      y <- coords[2] %>% as.integer
+      
+      mm <- mm[[time]]
+      
+      l_inf <- rep(0,11)
+      r_inf <- rep(0,11)
+      
+      for (i in 1:22){
+        team <- frame$team[i]
+        player <- (frame$player[i]-2)%%11+1
+        temp <- mm[,i] %>% matrix(nrow=x_segmentation,ncol=y_segmentation)
+        max_prob <- max(temp)
+        temp <- temp/max_prob 
+        
+        if (team == "l"){
+          l_inf[player %>% as.integer] <- temp[x,y]
+        }
+        else{
+          r_inf[player %>% as.integer] <- temp[x,y]
+        }
+        
+      }
+      return(1/(1+exp(sum(r_inf)-sum(l_inf))))
+    }
+    
+    get_ball_probs <- function(coords,mm){
+      time <- coords[3] %>% as.integer
+      x <- coords[1] %>% as.integer
+      y <- coords[2] %>% as.integer
+      
+      return(mm[[time]][x,y])
+    }
+    
+    
     
     #mat <- get_time(0)
     
-    mat <- c(0,1,2,3,4,5,6) %>%
+    mats <- c(0,1,2,3,4,5,6) %>%
+              lapply(FUN=get_time)
+    
+    mat <- matrix(0,nrow=x_segmentation,ncol=y_segmentation) %>%
+              melt %>%
+              apply(FUN = dist_mat,MARGIN=1,ball = ball_pos) %>%
+              matrix(nrow=x_segmentation,ncol=y_segmentation) %>%
+              melt %>%
+              apply(FUN = get_cell_influence,MARGIN=1,mm = mats) %>%
+              matrix(nrow=x_segmentation,ncol=y_segmentation)
+    
+    mats <- c(0,1,2,3,4,5,6) %>%
+              lapply(FUN = get_time,ballDo=TRUE)
+    
+    bal <- matrix(0,nrow=x_segmentation,ncol=y_segmentation) %>%
+              melt %>%
+              apply(FUN = dist_mat,MARGIN=1,ball = ball_pos) %>%
+              matrix(nrow=x_segmentation,ncol=y_segmentation) %>%
+              melt %>%
+              apply(FUN = get_ball_probs,MARGIN=1,mm = mats) %>%
+              matrix(nrow=x_segmentation,ncol=y_segmentation)
+    #mat <- c(0,1,2,3,4,5,6) %>%
         #lapply(FUN = time_mat) %>%
-        lapply(FUN = get_time) %>%
+        #lapply(FUN = get_time) %>%
         #Reduce(f=function(x,y) x+0.9*y)
-        Reduce(f='+')  
-        #discounted_sum(gamma = 0.8)
-    mat <- (mat+1)/2
-    return(mat)
+        #Reduce(f='+')  
+        #discounted_sum(gamma = 0.99)
+    #mat <- (mat+1)/2get_time(1,ballDo = T)
+    return(list(players = mat,ball = bal))
   }
 }
 
-#plot the ptch control/dominant regions
-plot_pc <- function(pc,frame,sf=FALSE){
+#plot the pitch control/dominant regions
+plot_pc <- function(pc,frame,sf=FALSE,threat = FALSE){
+  if (threat){
+    
+    ds <- sum(pc)
+    d <- data.frame(s=ds)
+    return(soccerPitch() +
+      scale_color_manual(values=c(pal[2],pal[4]))+
+      labs(x="",y="")+
+      geom_point(data = frame,
+                 mapping=aes(x=x,y=y,color=as.factor(team)),
+                 position = 'jitter',
+                 show.legend = F)+
+      geom_segment(data = frame,
+                   mapping=aes(x=x,xend = x+vX*scale,yend=y+vY*scale,y=y,color=as.factor(team)),
+                   arrow = arrow(length = unit(0.1, "cm")),
+                   show.legend = F)+
+      coord_fixed()+
+      labs(x="",y="")+
+        scale_fill_gradientn(colours=c("white",pal[2]),
+                             values = c(0,1),
+                             limits = c(0,1))+
+      geom_raster(data = pc %>% reshape2::melt(),
+                mapping = aes((Var1-0.5)*x_bin_width,(Var2-0.5)*y_bin_width,fill=value),
+                alpha=0.5,interpolate=TRUE,show.legend = F)+
+      geom_segment(data = d,
+                   mapping=aes(x = 117,xend=117,y = 10,yend = 10+(s*50)))+
+      geom_point(data = d,
+                 mapping=aes(x = 117,y = 10+(s*50)),
+                 size=1.5)+
+      geom_text(data = d,
+                mapping=aes(x = 122,y = 10+(s*50),label =round(ds,2)),
+                size=3)+
+      geom_text(data = d,
+                mapping=aes(x = 118,y = 65,label = "Threat"),
+                size=4))
+  }
   geom_pc <- function(df){
     colfunc <- colorRampPalette(c(pal[4],pal[3],"white",pal[1],pal[2]))
     if(sf){
@@ -461,7 +604,7 @@ plot_pc <- function(pc,frame,sf=FALSE){
              labs(x="",y=""),
              geom_raster(data = df %>% reshape2::melt(),
                          mapping = aes((Var1-0.5)*x_bin_width,(Var2-0.5)*y_bin_width,fill=value),
-                         alpha=0.5,interpolate=TRUE)))
+                         alpha=0.5,interpolate=TRUE),show.legend=F))
   }
   return(soccerPitch() +
     scale_color_manual(values=c(pal[2],pal[4]))+
@@ -490,19 +633,141 @@ test <- function(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/data/matc
   rm(match)
    
   print("start")
-  return(calculate_pitch_control(one_frame,mm))
+  return(calculate_pitch_control(one_frame,mm) %>% plot_pc(one_frame))
+}
+
+path = "C:/Users/David/OneDrive/Documents/Work/Thesis/data/matches_formatted.zip"
+file = "matches_formatted/cyrus2017-vs-Gliders2016/13-20170905233758-CYRUS_3-vs-Gliders2016_8.csv"
+#file = "matches_formatted/cyrus2017-vs-Gliders2016/17-20170905234225-CYRUS_0-vs-Gliders2016_0.csv"
+con = unz(description = path,filename = file)
+match <- read.csv(con)
+close(con)
+match <- match[,!(names(match) %in% c("X","index"))]
+one_frame = subset(match,frame == 1820)
+
+temp <- calculate_pitch_control(one_frame,"ppc") %>% plot_pc(one_frame %>% subset(player != 1))
+temp <- calculate_pitch_control(one_frame ,"ppc") %>% 
+            as.vector()
+temp <- 1-temp
+temp[temp <0.5] = 0
+#temp[temp <=0.5 & temp !=0] = 1-temp[temp <=0.5 & temp !=0]
+
+temp <- temp %>% matrix(ncol=y_segmentation,nrow=x_segmentation)
+
+ball <- subset(match,frame == 1820 & player == 1)[,c("x","y")] %>% as.vector()
+ball[1] <- floor(ball[1]/x_bin_width)
+ball[2] <- floor(ball[2]/y_bin_width)
+ball_ind <- ((ball[1]-1)*y_segmentation +ball[2]) %>% as.numeric
+
+vec <- h5read(filename,"probs")[ball_ind,]
+mat = matrix(0,nrow=40,ncol=28)
+if (!(sum(vec) == 0)){
+  mat <- (vec/sum(vec)) %>%
+          matrix(nrow=40,ncol=28)
+}
+(1-temp$players) %>% plot_pc(one_frame %>% subset(player!=1),threat = FALSE)
+(temp$players * xT) %>% plot_pc(one_frame %>% subset(player!=1),threat = TRUE)
+(temp$ball * temp$players * xT) %>% plot_pc(one_frame %>% subset(player!=1),threat = TRUE)
+(mat) %>% plot_pc(one_frame,threat = TRUE)
+
+plot_threat <- function(poss,pc,threat,frame,team){
+  if (team == "r"){
+    threat <- threat[,c(ncol(threat):1)]
+    threat <- threat[c(nrow(threat):1),]
+  }
+  else{
+    pc <- 1-pc
+  }
+  pc[pc < 0.5] = 0
+    
+  th <- (poss)*pc*threat
+  ds <- sum(th)
+  d <- data.frame(s=ds)
+  return(soccerPitch() +
+           scale_color_manual(values=c(pal[5],pal[2],pal[4]))+
+           labs(x="",y="")+
+           geom_point(data = frame,
+                      mapping=aes(x=x,y=y,color=as.factor(team)),
+                      position = 'jitter',
+                      show.legend = F)+
+           geom_segment(data = frame,
+                        mapping=aes(x=x,xend = x+vX*scale,yend=y+vY*scale,y=y,color=as.factor(team)),
+                        arrow = arrow(length = unit(0.1, "cm")),
+                        show.legend = F)+
+           geom_text(data = frame,
+                     mapping=aes(x=x,y=y,label = action),
+                     show.legend = F)+
+           coord_fixed()+
+           labs(x="",y="")+
+           scale_fill_gradientn(colours=c(pal[2],"white",pal[4]),
+                                values = c(0,0.5,1),
+                                limits = c(0,1))+
+           geom_raster(data = pc %>% reshape2::melt(),
+                       mapping = aes((Var1-0.5)*x_bin_width,(Var2-0.5)*y_bin_width,fill=value),
+                       alpha=0.5,interpolate=TRUE,show.legend = F)+
+           geom_segment(data = d,
+                         mapping=aes(x = 117,xend=117,y = 10,yend = 10+(s*50)))+
+           geom_point(data = d,
+                      mapping=aes(x = 117,y = 10+(s*50)),
+                      size=1.5)+
+           geom_text(data = d,
+                     mapping=aes(x = 122,y = 10+(s*50),label =round(ds,2)),
+                     size=3)+
+           geom_text(data = d,
+                     mapping=aes(x = 118,y = 65,label = "Threat"),
+                     size=4))
+}
+
+frames_for_ani <- (shots %>% subset(matchNo == 13 & recPlayer == "goal"))$frame %>% 
+                  lapply(FUN = function(x){return(c((x-30):(x+10)))}) %>% 
+                  unlist
+frames_for_ani <- cbind(frames_for_ani,
+                        rep((shots %>% 
+                               subset(matchNo == 13 & recPlayer == "goal" & 
+                                        frame %in% frames_for_ani))$team,
+                            each=41)) %>%
+                  as.data.frame()
+
+setwd("C:/Users/David/OneDrive/Documents/Work/Thesis/github/fig/animation")
+for (i in 1:nrow(frames_for_ani)){
+  print(frames_for_ani[i,])
+  frameNo <- frames_for_ani[i,1]
+  team <- frames_for_ani[i,2]
+  one_frame = subset(match,frame == frameNo)
+  temp <- calculate_pitch_control(one_frame ,"ppc")
+  pl <- plot_threat(temp$ball,temp$players,xT,one_frame,team)
+  ggsave(paste0("frame_",frameNo,".png"),pl)
 }
 
 
-path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/matches_formatted"
-file = "/cyrus2017-vs-Gliders2016/13-20170905233758-CYRUS_3-vs-Gliders2016_8.csv"
-match <- read.csv(paste0(path,file))
-match <- match[,!(names(match) %in% c("X","index"))]
+anim <- soccerPitch() +
+  scale_color_manual(values=c(pal[5],pal[2],pal[4]))+
+  labs(x="",y="")+
+  coord_fixed()+
+  geom_point(data = match %>% subset(frame %in% seq(2900,3050,by=1)),
+             mapping=aes(x=x,y=y,color=as.factor(team)),
+             position = 'jitter',
+             show.legend = F)+
+  geom_segment(data = match %>% subset(frame %in% seq(2900,3050,by=1)),
+               mapping=aes(x=x,xend = x+vX*scale,yend=y+vY*scale,y=y,color=as.factor(team)),
+               arrow = arrow(length = unit(0.1, "cm")),
+               show.legend = F)+
+  geom_text(data = match %>% subset(frame %in% seq(2900,3050,by=1)),
+            mapping=aes(x=x,y=y,color=as.factor(team),label = action),
+            position = 'jitter',
+            show.legend = F)+
+  transition_states(states = frame)
 
+animate(anim,nframes=150,fps=5)
 
-#pc <- test()
+#test()
 
+#path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/positional"
+#temp <- h5read(paste0(path,"/time.hdf5"),
+#               "time_0")
 
+#temp[,,,] %>% sum
+#h5closeAll()
 
 player_to_state <- function(row,
                             path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/matches_formatted.zip"){

@@ -26,7 +26,7 @@ TIMES = [0.1,0.5,1,2,3,4,5]
 PPC_TIMES = [0.1,0.5,1,2,3,4,5]
 ANGLES = [1,2,3,4,5,6,7,8]
 SPEEDS = [1,2,3,4,5,6,7,8,9,10,11,12]
-PATH_PPC = "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/positional"
+PATH_PPC = "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/ball"
 PATH_BRE = "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/brefeld"
 TEAMS = ["Gliders2016","HELIOS2016","Rione","CYRUS","MT2017",
             "Oxsy","FRAUNIted","HELIOS2017","HfutEngine2017","CSUYunlu"]
@@ -48,7 +48,6 @@ def transform(ps,pt,pu):
 
 #transforms a row in the data frame of triplets into the corresponding point p
 def transformRowTriplets(row):
-    #print([[float(row.psx),float(row.psy)],[float(row.ptx),float(row.pty)],[float(row.pux),float(row.puy)]])
     return(transform([float(row.psx),float(row.psy)],[float(row.ptx),float(row.pty)],[float(row.pux),float(row.puy)]))
 
 class PPCTime(object):
@@ -59,57 +58,38 @@ class PPCTime(object):
 
     def process(self,position):
         def do_time(ind):
-            print("here")
-            #big_mat = self.file["time_" + str(ind)][:]
             temp = position.loc[position['tD'] == TIMES[ind]]
             for pos in temp.groupby(['speedGroup','angleGroup']):
                 pos=pos[1]
                 sp = int(pos['speedGroup'].values[0])
                 ang = int(pos['angleGroup'].values[0])
-                #print([sp,ang],flush=T)
+                #print([sp,ang])
                 x = [x for x in list(pos['xBlock'].values) if str(x) != 'nan']
                 y = [x for x in list(pos['yBlock'].values) if str(x) != 'nan']
                 xEnd = [x for x in list(pos['xEndBlock'].values) if str(x) != 'nan']
                 yEnd = [x for x in list(pos['yEndBlock'].values) if str(x) != 'nan']
                 b = [(a*Y_SEGMENTATION + b)*NUM_CELLS + c*Y_SEGMENTATION + d for a,b,c,d in zip(x,y,xEnd,yEnd)]
                 b  = Counter(b)
-                with self.lock:
-                    #big_mat = self.file["time_" + str(ind)][:]
-                    #f = h5py.File(PATH_PPC + "/time.hdf5","a",libver='latest')
-                    #big_mat = f['time_' + str(ind)][:]
-                    f = h5py.File(PATH_PPC + "/time.hdf5","a",libver='latest')
-                    for k in b.keys():
+                #with self.lock:
+                f = h5py.File(PATH_PPC + "/time.hdf5","a",libver='latest')
+                dset = f['time_' + str(ind)]
+                for k in b.keys():
 
-                        val = f['time_' + str(ind)][sp-1,ang-1,math.floor(int(k)/NUM_CELLS),int(k)%NUM_CELLS]+b[k]
-                        if (ind == 0 and sp  == 1 and ang  == 1):
-                            if (math.floor(int(k)/NUM_CELLS) == 576):
-                                print(str(int(k)%NUM_CELLS) + " " + str(sp) + " " + str(ang) + " " + str(Counter(f['time_' + str(ind)][sp-1,ang-1,math.floor(int(k)/NUM_CELLS)])),flush = True)
-                            #print("before : " + str(f['time_' + str(ind)][sp-1][ang-1][math.floor(int(k)/NUM_CELLS)][int(k)%NUM_CELLS]))
-                            #print("b + val: " + str(b[k]+val))
-                            #print(Counter(big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)]))
-                        f['time_' + str(ind)][sp-1,ang-1,math.floor(int(k)/NUM_CELLS),int(k)%NUM_CELLS] = val
-                    f.close()
-                        #f = h5py.File(PATH_PPC + "/time.hdf5","r",libver='latest')
-                        #print(Counter(big_mat[sp-1][ang-1][math.floor(int(k)/NUM_CELLS)]))
-                        #if (ind == 0 and sp  == 1 and ang  == 1):
-                        #    if (math.floor(int(k)/NUM_CELLS) == 576):
-                        #        print(str(int(k)%NUM_CELLS) + " " + str(sp) + " " + str(ang) + " " + str(Counter(f['time_' + str(ind)][sp-1][ang-1][math.floor(int(k)/NUM_CELLS)])))
-                        #    print("after  : " + str(f['time_' + str(ind)][sp-1][ang-1][math.floor(int(k)/NUM_CELLS)][int(k)%NUM_CELLS]))
+                        #val = f['time_' + str(ind)][sp-1,ang-1,math.floor(int(k)/NUM_CELLS),int(k)%NUM_CELLS]+b[k]
+                        #print("before: " + str(f['time_' + str(ind)][sp-1,ang-1,math.floor(int(k)/NUM_CELLS),int(k)%NUM_CELLS]))
+                    dset[sp-1,ang-1,math.floor(int(k)/NUM_CELLS),int(k)%NUM_CELLS] += b[k]
+                del dset
+                f.close()
+
+                        #f = h5py.File(PATH_PPC + "/time.hdf5","a",libver='latest')
+                        #print("after : " + str(f['time_' + str(ind)][sp-1,ang-1,math.floor(int(k)/NUM_CELLS),int(k)%NUM_CELLS]))
                         #f.close()
-                    #f.close()
-            #with self.lock:
-            #    if (ind == 0):
-            #        print(Counter(self.file["time_" + str(ind)][0][0][576]))
-            #        print("    " + str(Counter(big_mat[0][0][576])))
-            #    self.file["time_" + str(ind)][:] = big_mat
-            #    if (ind == 0):
-            #        print("    "+str(Counter(self.file["time_" + str(ind)][4][0][576])))
-        #for i in range(len(TIMES)):
-        #   do_time(i)
-        pool = multiprocessing.Pool(7)
-        pool.apply_async(do_time,list(range(len(TIMES))))
-        pool.close()
-        pool.join()
+        for i in range(len(TIMES)):
+            do_time(i)
+        #pool = multiprocessing.Pool(7)
+        #pool.apply_async(do_time,list(range(len(TIMES))))
+        #pool.close()
+        #pool.join()
 
 class BrefeldPlayer(object):
 
@@ -145,7 +125,7 @@ def extract_triplets_into_matrices(filename,zp) :
     match = pd.read_csv(zp.open(filename))
 
     #remove ball
-    match = match[match.player != 1]
+    match = match[match.player == 1]
     match = match.iloc[:,1:]
     match = match.loc[(match['state'] == ' play_on')]
 
@@ -248,12 +228,12 @@ def extract_triplets_into_matrices(filename,zp) :
                 df_temp  = form_temp(df)
                 temp = pd.concat([temp,df_temp])
             if (not temp.empty):
-                #f = FILE_DICT["time"]
                 time_writer = PPCTime()
                 time_writer.process(temp)
 
                 for ind3 in range(len(TIMES)):
-                    if (len(temp.loc[temp['tD'] == TIMES[ind3]])>0):
+                    if (False):
+                    #if (len(temp.loc[temp['tD'] == TIMES[ind3]])>0):
                         St = pd.DataFrame(temp.loc[temp['tD'] == TIMES[ind3]].apply(transformRowTriplets,axis=1).tolist())
                         St.columns = ['xEndBlock','yEndBlock']
                         St['yEndBlock'] = pd.cut(St['xEndBlock'], bins=X_BINS, labels=X_LABELS,include_lowest = True)
@@ -266,7 +246,6 @@ def extract_triplets_into_matrices(filename,zp) :
                         player_writer = BrefeldPlayer(fb,ind3,player_name)
                         for frame in  [d for _, d in St.groupby(['speedGroup'])]:
                             player_writer.process(frame)
-            #print("\t" + str(time.process_time() - player_time))
     print("Time " + str(ind1) + ": " + str(time.process_time() - start_time))
 
 def make_matrices(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/",wf=True):
@@ -275,23 +254,26 @@ def make_matrices(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/",w
     FILE_DICT['time'] = h5py.File(PATH_PPC + "/time.hdf5","a",libver='latest')
     if (len(list(FILE_DICT['time'].keys())) == 0):
         for ind in range(len(TIMES)):
-            FILE_DICT['time'].create_dataset("time_"+str(ind), (len(SPEEDS),len(ANGLES),NUM_CELLS,NUM_CELLS), compression = "gzip", dtype='i2')
-    for team in TEAMS:
-        for i in range(1,12):
-            FILE_DICT[team + '/player_' + str(i)] = h5py.File(PATH_BRE + "/" + team + "/player_" + str(i) + ".hdf5","a",libver='latest')
-            if (len(list(FILE_DICT[team + '/player_' + str(i)].keys())) == 0):
-                for j in range(1,13):
-                    FILE_DICT[team + '/player_' + str(i)].create_dataset(str(j), (len(TIMES),NUM_CELLS), dtype='i2')
-    #for key in FILE_DICT.keys():
-    #    FILE_DICT[key].close()
+            FILE_DICT['time'].create_dataset("time_"+str(ind), (len(SPEEDS),len(ANGLES),NUM_CELLS,NUM_CELLS), compression = "gzip",compression_opts = 9, dtype='i4')
+    #for team in TEAMS:
+    #    for i in range(1,12):
+    #        FILE_DICT[team + '/player_' + str(i)] = h5py.File(PATH_BRE + "/" + team + "/player_" + str(i) + ".hdf5","a",libver='latest')
+    #        if (len(list(FILE_DICT[team + '/player_' + str(i)].keys())) == 0):
+    #            for j in range(1,13):
+    #                FILE_DICT[team + '/player_' + str(i)].create_dataset(str(j), (len(TIMES),NUM_CELLS), dtype='i2')
+
     FILE_DICT['time'].close()
+
     count = 0
     with zipfile.ZipFile(path + "matches_formatted.zip") as z:
         for file in list(filter(lambda x:x.endswith(".csv"),z.namelist() )):
-            if(count == 0):
+            if (count > 189):
                 extract_triplets_into_matrices(file,z)
             count+=1
 
+    for key in FILE_DICT.keys():
+        if (key != "time"):
+            FILE_DICT[key].close()
 
 
 if __name__ == '__main__':

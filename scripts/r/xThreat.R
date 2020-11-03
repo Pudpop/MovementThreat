@@ -114,16 +114,19 @@ rm(lzn.kriged)
 xT <- matrix(0,nrow=x_segmentation,ncol=y_segmentation)
 
 filename <- "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/threat_probs.hdf5"
-h5createFile(filename)
-filename %>% h5createDataset("probs",
-                             dims = c(num_cells,num_cells),
-                             H5type = "H5T_NATIVE_INT_FAST16",
-                             chunk = c(1,num_cells),
-                             level = 5)
-filename %>% h5createDataset("shoot",
-                             dims = c(x_segmentation,y_segmentation))
-filename %>% h5createDataset("xT",
-                             dims = c(x_segmentation,y_segmentation))
+
+if (FALSE){
+  h5createFile(filename)
+  filename %>% h5createDataset("probs",
+                               dims = c(num_cells,num_cells),
+                               H5type = "H5T_NATIVE_INT_FAST16",
+                               chunk = c(1,num_cells),
+                               level = 5)
+  filename %>% h5createDataset("shoot",
+                               dims = c(x_segmentation,y_segmentation))
+  filename %>% h5createDataset("xT",
+                               dims = c(x_segmentation,y_segmentation))
+}
 
 write_probs <- function(){
   for (i in 0:1119){
@@ -219,9 +222,9 @@ iter_threat <- function(xT){
   return(init)
 }
 
-write_probs()
+#write_probs()
 xT <- iter_threat(xT)
-h5write(xT,file = filename,name = "xT",index = list(NULL,NULL))
+#h5write(xT,file = filename,name = "xT",index = list(NULL,NULL))
 soccerPitch() + 
   geom_tile(data = xT %>% melt(),
             mapping=aes(x=(Var1-0.5)*x_bin_width,y=(Var2-0.5)*y_bin_width,fill=value),

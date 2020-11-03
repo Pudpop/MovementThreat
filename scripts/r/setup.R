@@ -6,6 +6,7 @@
   library(MASS) # kde
   library(rhdf5)#data
   library(reshape2)
+  library(pbapply)
 
 #plots
   library(ggplot2)
