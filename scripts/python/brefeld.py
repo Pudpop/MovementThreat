@@ -26,8 +26,8 @@ TIMES = [0.1,0.5,1,2,3,4,5]
 PPC_TIMES = [0.1,0.5,1,2,3,4,5]
 ANGLES = [1,2,3,4,5,6,7,8]
 SPEEDS = [1,2,3,4,5,6,7,8,9,10,11,12]
-PATH_PPC = "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/ball"
-PATH_BRE = "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/brefeld"
+PATH_PPC = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/positional"
+PATH_BRE = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/brefeld"
 TEAMS = ["Gliders2016","HELIOS2016","Rione","CYRUS","MT2017",
             "Oxsy","FRAUNIted","HELIOS2017","HfutEngine2017","CSUYunlu"]
 FILE_DICT = {}
@@ -125,7 +125,7 @@ def extract_triplets_into_matrices(filename,zp) :
     match = pd.read_csv(zp.open(filename))
 
     #remove ball
-    match = match[match.player == 1]
+    match = match[match.player != 1]
     match = match.iloc[:,1:]
     match = match.loc[(match['state'] == ' play_on')]
 
@@ -267,7 +267,7 @@ def make_matrices(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/",w
     count = 0
     with zipfile.ZipFile(path + "matches_formatted.zip") as z:
         for file in list(filter(lambda x:x.endswith(".csv"),z.namelist() )):
-            if (count > 189):
+            if (count > 600 and count < 625):
                 extract_triplets_into_matrices(file,z)
             count+=1
 

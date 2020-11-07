@@ -113,7 +113,7 @@ rm(lzn.kriged)
 
 xT <- matrix(0,nrow=x_segmentation,ncol=y_segmentation)
 
-filename <- "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/threat_probs.hdf5"
+filename <- "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/threat_probs.hdf5"
 
 if (FALSE){
   h5createFile(filename)

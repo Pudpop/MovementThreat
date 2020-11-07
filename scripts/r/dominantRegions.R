@@ -396,9 +396,9 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
     ball_pos <- c((ball$x %>% cut_xy)+1,(ball$y %>% cut_xy(is.x=FALSE))+1)
     
     get_time <- function(time,ballDo = F){
-      path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/positional"
+      path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/positional"
       if (ballDo){
-        path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/ball"
+        path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/ball"
       }
       
       temp <- h5read(paste0(path,"/time",".hdf5"),
@@ -637,8 +637,8 @@ test <- function(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/data/matc
 }
 
 path = "C:/Users/David/OneDrive/Documents/Work/Thesis/data/matches_formatted.zip"
+#file = "matches_formatted/Gliders2016-vs-ri-one/246-20170904134510-Gliders2016_6-vs-Ri-one_0.csv"
 file = "matches_formatted/cyrus2017-vs-Gliders2016/13-20170905233758-CYRUS_3-vs-Gliders2016_8.csv"
-#file = "matches_formatted/cyrus2017-vs-Gliders2016/17-20170905234225-CYRUS_0-vs-Gliders2016_0.csv"
 con = unz(description = path,filename = file)
 match <- read.csv(con)
 close(con)
@@ -718,8 +718,8 @@ plot_threat <- function(poss,pc,threat,frame,team){
                      size=4))
 }
 
-frames_for_ani <- (shots %>% subset(matchNo == 13 & recPlayer == "goal"))$frame %>% 
-                  lapply(FUN = function(x){return(c((x-30):(x+10)))}) %>% 
+frames_for_ani <- (shots %>% subset(matchNo == 13 & recPlayer == "goal" & team == "l"))$frame %>% 
+                  lapply(FUN = function(x){return(c((x-30):(x+5)))}) %>% 
                   unlist
 frames_for_ani <- cbind(frames_for_ani,
                         rep((shots %>% 
@@ -770,7 +770,7 @@ animate(anim,nframes=150,fps=5)
 #h5closeAll()
 
 player_to_state <- function(row,
-                            path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/matches_formatted.zip"){
+){
   get_info <- function(row){
     return(c(row$matchNo[1],row$frame[1]))
   }
@@ -782,11 +782,14 @@ player_to_state <- function(row,
     con = unz(description = path,filename = file)
     match <- read.csv(con)
     #close(con)
-    match <- match[,!(names(match) %in% c("X","index"))]
+    match <- match[,names(match) %in% colnames(row)]
     one_frame = subset(match,frame == frameNo)
+    
+    
+    
     return(one_frame)
   }
   
+  
   return(read_file(get_info(row)))
 }
-
