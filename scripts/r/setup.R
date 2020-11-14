@@ -7,6 +7,8 @@
   library(rhdf5)#data
   library(reshape2)
   library(pbapply)
+  library(foreach)
+  library(parallel)
 
 #plots
   library(ggplot2)

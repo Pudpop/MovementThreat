@@ -266,18 +266,25 @@ def classifyKicks(data):
         opp_gk = opp.loc[opp['isGK'] == True]
 
         goal_allowance = 15
-        goal_bot = ifelse(leftteam,
-                          [107,35-goal_allowance],
-                          [0,35-goal_allowance])
-        goal_top = ifelse(leftteam,
-                          [107,35+goal_allowance] ,
-                          [0,35+goal_allowance])
+        #goal_bot = ifelse(leftteam,
+        #                  [107,35-goal_allowance],
+        #                  [0,35-goal_allowance])
+        goal_bot = [107,35-goal_allowance]
+        #goal_top = ifelse(leftteam,
+        #                  [107,35+goal_allowance] ,
+        #                  [0,35+goal_allowance])
+        goal_top = [107,35+goal_allowance]
+
         kick_position = kicker.iloc[0,9:11]
 
         #check if player in final third
         final_third = ifelse(leftteam,
                              kick_position[0]>70,
                              kick_position[0]<35)
+
+        kick_position = ifelse(leftteam,
+                               kicker.iloc[0,9:11],
+                               [107-kicker.iloc[0,9],70-kicker.iloc[0,10]])
 
         #check if angle of ball trajectory is toward goal
         angle_top = math.atan2(goal_top[1]-kick_position[1],goal_top[0]-kick_position[0])
@@ -303,6 +310,8 @@ def classifyKicks(data):
         if (not final_third):
             data.loc[(data['frame'] == level) & (data['player'] == player_name),['action']] = "pass"
             continue
+
+        kick_position = kicker.iloc[0,9:11]
 
         #check if teammates in front of player
         asc = (team == "r")
@@ -478,6 +487,7 @@ def make_events_database():
         df = df.loc[df['action'].isin(['pass','dribble','shot','k','kg','gk'])]
         return(df)
 
+    count = 0
     with zipfile.ZipFile(MAIN_DIREC + "matches_formatted.zip") as z:
         for name in z.namelist():
             if fnmatch(name,"*.csv"):
@@ -488,6 +498,7 @@ def make_events_database():
                 else:
                     with open(write_file_name,'a') as fd:
                         fd.write(get_events(name,z).to_csv(header=True, index = False,line_terminator='\n') )
+                count+=1
 
 def process_all_matches():
     count = 0
@@ -514,5 +525,5 @@ def process_all_matches():
                         count+=1
 
 if __name__ == "__main__":
-    #process_all_matches()
-    make_events_database()
+    process_all_matches()
+    #make_events_database()

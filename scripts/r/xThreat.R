@@ -42,6 +42,8 @@ moves <- events %>% subset(action %in% c("pass","dribble"))
 dribbles <- events %>% subset(action == "dribble")
 passes <- events %>% subset(action == "pass")
 
+soccerPitch() + geom_point(data = shots,mapping = aes(x = x,y = y,color = team))
+
 #train expected goals
 
 set.seed(1886)
@@ -129,10 +131,10 @@ if (FALSE){
 }
 
 write_probs <- function(){
-  for (i in 0:1119){
+  for (i in 1:1120){
     print(i)
-    x_no <- floor(i/y_segmentation) %>% as.integer()
-    y_no <- i%%y_segmentation
+    x_no <- (floor(i/y_segmentation)+1) %>% as.integer()
+    y_no <- ((i-1)%%y_segmentation)+1
     sub <- events[!is.na(events$eventEndPosYBlock) & !is.na(events$eventEndPosXBlock),] %>% 
               subset(xBlock == x_no & yBlock == y_no)
     counts <- sub %>%
@@ -144,31 +146,33 @@ write_probs <- function(){
       ) %>%
       as.data.frame() %>%
       mutate(
-        index = (eventEndPosXBlock-1)*y_segmentation + (eventEndPosYBlock-1),
+        index = (eventEndPosXBlock-1)*y_segmentation + (eventEndPosYBlock),
         n = n,
         action = action
       )
     m1 <- matrix(0,num_cells)
     m1[as.matrix(counts[,c("index")])] <- counts[,c("n")]
     m1 <- as.vector(m1)
-    h5write(m1,file = filename,name = "probs",index = list(i+1,NULL))
+    h5write(m1,file = filename,name = "probs",index = list(i,NULL))
     h5closeAll()
     total <- nrow(sub)
     if (total == 0){
       #print("zero")
-      h5write(0,file = filename,name = "shoot",index = list(x_no+1,y_no+1))
+      h5write(0,file = filename,name = "shoot",index = list(x_no,y_no))
     }
     else{
       shootProb <- sub %>%
         subset(action == "shot") %>%
         nrow
       print(shootProb/total)
-      h5write(shootProb/total,file = filename,name = "shoot",index = list(x_no+1,y_no+1))
+      h5write(shootProb/total,file = filename,name = "shoot",index = list(x_no,y_no))
     }
     h5closeAll()
     
   }
 }
+#write_probs()
+
 
 prob_shoot <- function(x,y){
   return(h5read(filename,"shoot")[x,y])
@@ -206,7 +210,7 @@ cellThreat <- function(coords,threat,xG_model = "lm",data = events){
 iter_threat <- function(xT){
   init <- xT
   epsilon <- 100
-  while(epsilon > 1){
+  while(epsilon > 5){
     new <- (init %>%
               melt)[,1:2] %>%
               pbapply(FUN = cellThreat,
@@ -222,9 +226,8 @@ iter_threat <- function(xT){
   return(init)
 }
 
-#write_probs()
 xT <- iter_threat(xT)
-#h5write(xT,file = filename,name = "xT",index = list(NULL,NULL))
+h5write(xT,file = filename,name = "xT",index = list(NULL,NULL))
 soccerPitch() + 
   geom_tile(data = xT %>% melt(),
             mapping=aes(x=(Var1-0.5)*x_bin_width,y=(Var2-0.5)*y_bin_width,fill=value),

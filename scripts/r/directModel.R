@@ -8,8 +8,8 @@ get_traj_data <- function(names,                     #list of names columns whic
 {
   
   matches <- events_data$matchNo %>% unique
-  sub <- sample(size = 50,x = length(matches))
-  matches <- matches[sub]
+  #sub <- sample(size = 50,x = length(matches))
+  #matches <- matches[sub]
   
   to_arr <- function(df){
     return(df[,3:8] %>% 
@@ -40,9 +40,9 @@ get_traj_data <- function(names,                     #list of names columns whic
                 subset(select = -c(action)) %>%
                 group_by(frame,matchNo) %>%
                 do(arr = to_arr(.)))$arr %>% 
-      abind(rev.along = 0) %>%
-      aperm(c(4,2,1,3)) %>%
-      unname
+                abind(rev.along = 0) %>%
+                aperm(c(4,2,1,3)) %>%
+                unname
     output <- (temp %>%
                  subset(action != "") %>%
                  mutate(
@@ -53,7 +53,7 @@ get_traj_data <- function(names,                     #list of names columns whic
                  subset(select = action) %>%
                  unlist %>%
                  array(dim=length(.)) - 1) %>%
-      to_categorical(num_classes = 3)
+                 to_categorical(num_classes = 3)
     
     return(list(x = input,y = output))
   }
@@ -99,23 +99,16 @@ y_train <- output[train,]
 x_test <- input[-train,,,]
 y_test <- output[-train,]
 
-model <- keras_model_sequential() %>% 
-  layer_conv_2d(filters = 22, kernel_size = c(3,3),activation = 'relu', input_shape = c(6,11,2)) %>% 
-  layer_max_pooling_2d(pool_size = c(2,2)) %>%
-  layer_dropout(rate=0.25) %>%
-  layer_flatten() %>% 
-  layer_dense(units = 110, activation = 'relu') %>% 
-  layer_dropout(rate = 0.25) %>% 
-  layer_dense(units = 3, activation = 'softmax')
-
 weighted_cross_entropy <- function( y_true, y_pred) {
   num_cat <- 3
   w = matrix(1,nrow=num_cat,ncol=num_cat)
   
-  w[1,3] <- 100
-  w[3,1] <- 100
-  w[3,2] <- 100
-  w[2,3] <- 100
+  #w[1,3] <- 1
+  w[1,3] <- 100000
+  #w[3,2] <- 1
+  w[2,3] <- 100000
+  w[1,2] <- 25000
+  w[2,1] <- 10000
   nb_cl <- nrow(w)
   
   K <- backend()
@@ -132,6 +125,16 @@ weighted_cross_entropy <- function( y_true, y_pred) {
 }
 
 
+model <- keras_model_sequential() %>% 
+  layer_conv_2d(filters = 22, kernel_size = c(3,3),activation = 'relu', input_shape = c(6,11,2)) %>% 
+  layer_max_pooling_2d(pool_size = c(2,2)) %>%
+  layer_dropout(rate=0.25) %>%
+  layer_flatten() %>% 
+  layer_dense(units = 110, activation = 'relu') %>% 
+  layer_dropout(rate = 0.25) %>% 
+  layer_dense(units = 3, activation = 'softmax')
+
+
 model %>% compile(
   loss = weighted_cross_entropy,
   optimizer = optimizer_rmsprop(),
@@ -140,10 +143,10 @@ model %>% compile(
 
 history <- model %>% fit(
   x_train, y_train, 
-  epochs = 10, batch_size = 104, 
+  epochs = 10, batch_size = 2000, 
   validation_split = 0.2
 )
 
 model %>% evaluate(x_test, y_test)
-model %>% predict_classes(x_test)  
+model %>% predict_classes(x_test)   %>% table %>% prop.table
 
