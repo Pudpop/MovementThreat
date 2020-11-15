@@ -1,7 +1,3 @@
-library(keras)
-library(pbapply)
-library(abind)
-
 get_traj_data <- function(names,                     #list of names columns which will be explanatory variables 
                           path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/matches_formatted.zip",
                           events_data = events)      #data frame containing events

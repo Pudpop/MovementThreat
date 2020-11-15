@@ -42,7 +42,7 @@ moves <- events %>% subset(action %in% c("pass","dribble"))
 dribbles <- events %>% subset(action == "dribble")
 passes <- events %>% subset(action == "pass")
 
-soccerPitch() + geom_point(data = shots,mapping = aes(x = x,y = y,color = team))
+soccerPitch() + geom_point(data = shots %>% subset(recPlayer != "goal"),mapping = aes(x = x,y = y,color = team))
 
 #train expected goals
 
@@ -117,7 +117,7 @@ xT <- matrix(0,nrow=x_segmentation,ncol=y_segmentation)
 
 filename <- "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/threat_probs.hdf5"
 
-if (FALSE){
+if (TRUE){
   h5createFile(filename)
   filename %>% h5createDataset("probs",
                                dims = c(num_cells,num_cells),
@@ -171,7 +171,7 @@ write_probs <- function(){
     
   }
 }
-#write_probs()
+write_probs()
 
 
 prob_shoot <- function(x,y){
@@ -210,7 +210,7 @@ cellThreat <- function(coords,threat,xG_model = "lm",data = events){
 iter_threat <- function(xT){
   init <- xT
   epsilon <- 100
-  while(epsilon > 5){
+  while(epsilon > 5.2){
     new <- (init %>%
               melt)[,1:2] %>%
               pbapply(FUN = cellThreat,
@@ -227,6 +227,9 @@ iter_threat <- function(xT){
 }
 
 xT <- iter_threat(xT)
+xT_right <- xT
+xT_right <- xT_right[,c(ncol(xT_right):1)]
+xT_right <- xT_right[c(nrow(xT_right):1),]
 h5write(xT,file = filename,name = "xT",index = list(NULL,NULL))
 soccerPitch() + 
   geom_tile(data = xT %>% melt(),

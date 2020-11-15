@@ -359,7 +359,7 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
   }
   else if (model == "voronoi"){
     
-    #plot voronoi tessselation
+    #voronoi tessselation
     st_voronoi_point <- function(points){
       ## points must be POINT geometry
       if(!all(st_geometry_type(points) == "POINT")){
@@ -665,6 +665,9 @@ run_threat <- function(){
                            xT = 0,
                            xT_left = 0,
                            xT_right = 0,
+                           xP = 0,
+                           xP_left = 0,
+                           xP_right = 0,
                            xI = 0,
                            xI_left = 0,
                            xI_right = 0,
@@ -676,7 +679,141 @@ run_threat <- function(){
     return(xT[event$xBlock %>% as.integer,event$yBlock %>% as.integer])
   }
   
-  get_xI <- function(frame,rTeam){
+  get_xP <- function(frame){
+    ball = frame %>% subset(player == 1)
+    frame <- frame %>% subset(player!=1)
+    weights <- c(0.3,0.45,0.75,1,1,1,1)
+    
+    cut_xy <- function(x,is.x=TRUE){
+      if(is.x){
+        return( floor((x %>% as.numeric)/x_bin_width))
+      }
+      return(floor((x %>% as.numeric)/y_bin_width))
+    }
+    
+    ball_pos <- c((ball$x %>% cut_xy)+1,(ball$y %>% cut_xy(is.x=FALSE))+1)
+    
+    
+    get_time <- function(time){
+      get_position <- function(row){
+        if (row[4] == 'r'){
+          orig <- row[3] %>% as.integer
+          orig.x <- floor(orig/y_segmentation)
+          orig.x <- x_segmentation - orig.x
+          orig.y <- orig%%y_segmentation
+          orig.y <- y_segmentation - orig.y
+          orig <- (orig.x-1)*y_segmentation + orig.y
+          mattt <- (temp[,orig %>% as.integer,
+                         row[2]  %>% as.integer,
+                         row[1]  %>% as.integer]) %>% 
+            matrix(nrow=x_segmentation,byrow=T)
+          mattt <- mattt[,c(ncol(mattt):1)]
+          mattt <- mattt[c(nrow(mattt):1),]
+          summatt <- sum(mattt)
+          if (summatt >0){
+            return(mattt/(summatt))  
+          }
+          return(matrix(0,nrow=x_segmentation,ncol=y_segmentation))
+        }
+        mattt <- temp[,(row[3]%>% trimws %>% as.integer+1),
+                      row[2]  %>% as.integer,
+                      row[1]  %>% as.integer]%>% 
+          matrix(nrow=x_segmentation,byrow=T)
+        summatt <- sum(mattt)
+        if (summatt >0){
+          return(mattt/(summatt))  
+        }
+        return(matrix(0,nrow=x_segmentation,ncol=y_segmentation))
+      }
+      ball_mat <- matrix(0,nrow=x_segmentation,ncol=y_segmentation)
+      
+      temp <- ballFiles[[time+1]]
+      mats <- get_position(c(ball$speedGroup,
+                             ball$angleGroup,
+                             (ball_pos[1]-1)*y_segmentation + ball_pos[2]-1,
+                             "b"))
+      ball_mat <- mats
+      return(ball_mat*weights[time+1])
+    }
+    
+    mats <- c(0,1,2,3,4,5,6) %>%
+      lapply(FUN=get_time)
+    lon <- seq(0, pitch_length, length.out = x_segmentation)
+    lat <- seq(0, pitch_width, length.out = y_segmentation)
+    grd <- expand.grid(x = lon, y = lat)
+    
+    grd_sf  <-  st_as_sf(grd, coords = c("x", "y"), agr = "constant")
+    
+    
+    #voronoi tessselation
+    st_voronoi_point <- function(points){
+      ## points must be POINT geometry
+      if(!all(st_geometry_type(points) == "POINT")){
+        stop("Input not  POINT geometries")
+      }
+      g = st_combine(st_geometry(points)) # make multipoint
+      v = st_voronoi(g)
+      v = st_collection_extract(v)
+      return(v[unlist(st_intersects(points, v))])
+    }
+    
+    
+    box <- c(xmin = 0, xmax = 107, ymax = 0, ymin = 70) %>%
+      st_bbox() %>%
+      st_as_sfc()
+    voronoi <- frame[c('player','team','x','y')] %>%
+      st_as_sf(coords= c( "x", "y" )) %>%
+      st_voronoi_point() %>%
+      st_intersection(box)
+    voronoi <- st_sf(player = frame$player,
+                     team = frame$team,
+                     geometry = voronoi,
+                     value = (frame$team == 1) %>% as.numeric)
+    
+    r <- raster(voronoi,nrows = y_segmentation,ncols= x_segmentation)
+    
+    count_left <- voronoi %>%
+      fasterize(raster =r, field = "value", fun = "sum") %>%
+      as.matrix %>%
+      t
+    
+    voronoi$value <- 1-voronoi$value
+    
+    count_right <- voronoi %>%
+      fasterize(raster =r, field = "value", fun = "sum")%>%
+      as.matrix %>%
+      t
+    
+    #browser()
+    
+    #left_team <- voronoi %>%
+    #  subset(team == "l") %>%
+    #  st_union
+    #right_team <- voronoi %>%
+    #  subset(team == "r") %>%
+    #  st_union
+    #browser()
+    #start <- Sys.time()
+    #count_left <- grd_sf$geometry %>%
+    #  lapply(FUN = st_intersects,y = left_team,sparse = FALSE) %>%
+    #  unlist %>%
+    #  as.numeric %>%
+    #  matrix(nrow = x_segmentation,ncol=y_segmentation)
+    
+    #count_right <- grd_sf$geometry %>%
+    #  lapply(FUN = st_within,y = right_team,sparse = FALSE) %>%
+    #  unlist %>%
+    #  as.numeric %>%
+    #  matrix(nrow = x_segmentation,ncol=y_segmentation)
+
+    #print(Sys.time()-start)
+    left <- Reduce('+',mats)*count_left*xT
+    right <- Reduce('+',mats)*count_right*xT_right
+    
+    c(left,right) %>% return()
+  }
+  
+  get_xI <- function(frame){
     ball = frame %>% subset(player == 1)
     frame <- frame %>% subset(player!=1)
     
@@ -741,87 +878,44 @@ run_threat <- function(){
       return(list(ball = ball_mat,players = mats))
     }
     
-    
-    dist_mat <- function(row,ball){
-      d = dist(matrix(c(row[1:2],ball),byrow=T,nrow=2),method="manhattan")
-      if (d == 0){
-        return(1)
-      }
-      if (d != dist(matrix(c(row[1:2],ball),byrow=T,nrow=2))){
-        x_dist <- abs(row[1]-ball[1])
-        y_dist <- abs(row[2]-ball[2])
-        return(min(ceiling(max(c(x_dist,y_dist))),7))  
-      }
-      return(min(ceiling(d),7))
+    get_time_influence <- function(time,mm,teams){
+      mm <- mm[[time+1]]
+      play <- (mm$players %*% diag(teams)) %>%
+        rowSums %>%
+        (function(x){1/(1+exp(-x))}) %>%
+        matrix(nrow=x_segmentation,ncol=y_segmentation)
+      return(play)
     }
+
+    add_min <- ifelse(frame$team == "l",
+                      1,
+                      -1)
     
-    get_cell_influence <- function(coords,mm){
-      time <- coords[3] %>% as.integer
-      x <- coords[1] %>% as.integer
-      y <- coords[2] %>% as.integer
-      
-      mm <- mm[[time]]$players
-      
-      l_inf <- rep(0,11)
-      r_inf <- rep(0,11)
-      
-      for (i in 1:22){
-        team <- frame$team[i]
-        player <- (frame$player[i]-2)%%11+1
-        temp <- mm[,i] %>% matrix(nrow=x_segmentation,ncol=y_segmentation)
-        max_prob <- max(temp)
-        temp <- temp/max_prob 
-        
-        if (team == "l"){
-          l_inf[player %>% as.integer] <- temp[x,y]
-        }
-        else{
-          r_inf[player %>% as.integer] <- temp[x,y]
-        }
-        
-      }
-      return(1/(1+exp(sum(r_inf)-sum(l_inf))))
-    }
-    
-    get_ball_probs <- function(coords,mm){
-      time <- coords[3] %>% as.integer
-      x <- coords[1] %>% as.integer
-      y <- coords[2] %>% as.integer
-      
-      return(mm[[time]]$ball[x,y])
-    }
-    
-    pos_mat <- matrix(0,nrow=x_segmentation,ncol=y_segmentation) %>%
-      melt %>%
-      apply(FUN = dist_mat,MARGIN=1,ball = ball_pos) %>%
-      matrix(nrow=x_segmentation,ncol=y_segmentation) %>%
-      melt
+    weights <- c(0.3,0.45,0.75,1,1,1,1)
     
     mats <- c(0,1,2,3,4,5,6) %>%
       lapply(FUN=get_time)
     
-    mat <- pos_mat %>%
-      apply(FUN = get_cell_influence,MARGIN=1,mm = mats) %>%
-      matrix(nrow=x_segmentation,ncol=y_segmentation)
+    .list <- c(0,1,2,3,4,5,6) %>%
+      lapply(FUN = get_time_influence,mm = mats,teams = add_min) 
+    .rlist <- .list %>%
+      lapply(FUN = function(x){1-x})
+    for (i in  1:length(.list)){
+      .list[[i]] <- mats[[i]]$ball * .list[[i]] * weights[i]
+      .rlist[[i]] <- mats[[i]]$ball * .rlist[[i]] * weights[i]
+    }
+
+    left <- (Reduce('+',.list)*xT) %>% sum
+    right <- (Reduce('+',.rlist) * xT_right) %>% sum
     
-    bal <- pos_mat %>%
-      apply(FUN = get_ball_probs,MARGIN=1,mm = mats) %>%
-      matrix(nrow=x_segmentation,ncol=y_segmentation)
-    
-    left <- (bal * mat * xT) %>% sum
-    #do right team
-      mat <- mat[,c(ncol(mat):1)]
-      mat <- mat[c(nrow(mat):1),]
-      mat <- 1-mat
-      
-      bal <- bal[,c(ncol(bal):1)]
-      bal <- bal[c(nrow(bal):1),]
-    right <- (bal * mat * xT) %>% sum
     c(left,right) %>% return()
   }
   
   for (number in match_numbers){
     print(number)
+    if (as.integer(number) == 1){
+      break
+    }
     file <- grep(paste0('.*/',number,'-'),unzip(path, list=TRUE)$Name,value=T)
     con = unz(description = path,filename = file)
     match <- read.csv(con)
@@ -859,22 +953,28 @@ run_threat <- function(){
       
     xT_tot <- xT_left + xT_right
       
+    xP <- match %>%
+      subset(state == " play_on")
+    xP <- xP %>% split(xP$frame)
+    xP <- xP %>%
+      pblapply(FUN = get_xP)
+    
+    xP_left <- xP %>%
+      lapply(FUN = function(x){return(x[1])}) %>%
+      unlist %>%
+      sum
+    xP_right <- xP %>%
+      lapply(FUN = function(x){return(x[2])}) %>%
+      unlist %>%
+      sum
+    
+    xP_tot <- xP_left + xP_right
 
     xI <- match %>%
       subset(state == " play_on")
-    xI <- xI %>% split(xI$frame) 
-    #print(length(xI_left))
-    #xI <- xI %>%
-    #  pblapply(FUN = get_xI)
-    start = Sys.time()
-    cl <- makeCluster(4)
-    registerDoParallel(cl)
-    xI <- foreach(
-      i = xI[1:10],
-      .combine = list
-    ) %dopar% get_xI(i)
-    stopCluster(cl) 
-    print(Sys.time()-start)
+    xI <- xI %>% split(xI$frame)
+    xI <- xI %>%
+      pblapply(FUN = get_xI)
       
     xI_left <- xI %>%
       lapply(FUN = function(x){return(x[1])}) %>%
@@ -886,8 +986,9 @@ run_threat <- function(){
       sum
     
     xI_tot <- xI_left + xI_right
-    cum_threat[cum_threat$matchNo == number,c(2:12)] <- c(xG_tot,xG_left,xG_right,
+    cum_threat[cum_threat$matchNo == number,c(2:15)] <- c(xG_tot,xG_left,xG_right,
                                                           xT_tot,xT_left,xT_right,
+                                                          xP_tot,xP_left,xP_right,
                                                           xI_tot,xI_left,xI_right,
                                                           score_left,score_right)
     

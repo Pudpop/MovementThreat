@@ -9,6 +9,9 @@
   library(pbapply)
   library(foreach)
   library(parallel)
+  library(keras)
+  library(pbapply)
+  library(abind)
 
 #plots
   library(ggplot2)
@@ -20,6 +23,8 @@
   library(extrafont)
 
 #spatial
+  library(raster)
+  library(fasterize)
   library(sf)
   library(sp)
   library(rgdal)

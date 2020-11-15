@@ -525,5 +525,5 @@ def process_all_matches():
                         count+=1
 
 if __name__ == "__main__":
-    process_all_matches()
-    #make_events_database()
+    #process_all_matches()
+    make_events_database()
