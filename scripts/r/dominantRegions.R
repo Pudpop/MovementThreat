@@ -682,7 +682,6 @@ run_threat <- function(){
   get_xP <- function(frame){
     ball = frame %>% subset(player == 1)
     frame <- frame %>% subset(player!=1)
-    weights <- c(0.3,0.45,0.75,1,1,1,1)
     
     cut_xy <- function(x,is.x=TRUE){
       if(is.x){
@@ -733,11 +732,11 @@ run_threat <- function(){
                              (ball_pos[1]-1)*y_segmentation + ball_pos[2]-1,
                              "b"))
       ball_mat <- mats
-      return(ball_mat*weights[time+1])
+      return(ball_mat)
     }
     
-    mats <- c(0,1,2,3,4,5,6) %>%
-      lapply(FUN=get_time)
+    mats <- get_time(0)
+    
     lon <- seq(0, pitch_length, length.out = x_segmentation)
     lat <- seq(0, pitch_width, length.out = y_segmentation)
     grd <- expand.grid(x = lon, y = lat)
@@ -768,7 +767,7 @@ run_threat <- function(){
     voronoi <- st_sf(player = frame$player,
                      team = frame$team,
                      geometry = voronoi,
-                     value = (frame$team == 1) %>% as.numeric)
+                     value = (frame$team == "l") %>% as.numeric)
     
     r <- raster(voronoi,nrows = y_segmentation,ncols= x_segmentation)
     
@@ -783,32 +782,9 @@ run_threat <- function(){
       fasterize(raster =r, field = "value", fun = "sum")%>%
       as.matrix %>%
       t
-    
-    #browser()
-    
-    #left_team <- voronoi %>%
-    #  subset(team == "l") %>%
-    #  st_union
-    #right_team <- voronoi %>%
-    #  subset(team == "r") %>%
-    #  st_union
-    #browser()
-    #start <- Sys.time()
-    #count_left <- grd_sf$geometry %>%
-    #  lapply(FUN = st_intersects,y = left_team,sparse = FALSE) %>%
-    #  unlist %>%
-    #  as.numeric %>%
-    #  matrix(nrow = x_segmentation,ncol=y_segmentation)
-    
-    #count_right <- grd_sf$geometry %>%
-    #  lapply(FUN = st_within,y = right_team,sparse = FALSE) %>%
-    #  unlist %>%
-    #  as.numeric %>%
-    #  matrix(nrow = x_segmentation,ncol=y_segmentation)
 
-    #print(Sys.time()-start)
-    left <- Reduce('+',mats)*count_left*xT
-    right <- Reduce('+',mats)*count_right*xT_right
+    left <- mats*count_left*xT
+    right <- mats*count_right*xT_right
     
     c(left,right) %>% return()
   }
@@ -891,114 +867,243 @@ run_threat <- function(){
                       1,
                       -1)
     
-    weights <- c(0.3,0.45,0.75,1,1,1,1)
+    #weights <- c(0.3,0.45,0.75,1,1,1,1)
     
     mats <- c(0,1,2,3,4,5,6) %>%
       lapply(FUN=get_time)
     
     .list <- c(0,1,2,3,4,5,6) %>%
       lapply(FUN = get_time_influence,mm = mats,teams = add_min) 
+    
+    .list <- list(.list[[1]],.list[[1]],.list[[1]],
+                  .list[[2]],.list[[2]],.list[[2]],.list[[2]],
+                  .list[[3]],.list[[3]],.list[[3]],.list[[3]],
+                  .list[[3]],.list[[3]],.list[[3]],.list[[3]],
+                  .list[[4]],.list[[4]],.list[[4]],.list[[4]],.list[[4]],
+                  .list[[4]],.list[[4]],.list[[4]],.list[[4]],.list[[4]],
+                  .list[[5]],.list[[5]],.list[[5]],.list[[5]],.list[[5]],
+                  .list[[5]],.list[[5]],.list[[5]],.list[[5]],.list[[5]],
+                  .list[[6]],.list[[6]],.list[[6]],.list[[6]],.list[[6]],
+                  .list[[6]],.list[[6]],.list[[6]],.list[[6]],.list[[6]],
+                  .list[[7]],.list[[7]],.list[[7]],.list[[7]],.list[[7]],
+                  .list[[7]],.list[[7]],.list[[7]],.list[[7]],.list[[7]])
+    indeces <- c(rep(1,3),rep(2,5),rep(3,8),
+                 rep(4,10),rep(5,10),rep(6,10),rep(7,10))
+    
     .rlist <- .list %>%
       lapply(FUN = function(x){1-x})
     for (i in  1:length(.list)){
-      .list[[i]] <- mats[[i]]$ball * .list[[i]] * weights[i]
-      .rlist[[i]] <- mats[[i]]$ball * .rlist[[i]] * weights[i]
+      .list[[i]] <- mats[[indeces[i]]]$ball * .list[[i]]
+      .rlist[[i]] <- mats[[indeces[i]]]$ball * .rlist[[i]]
+      
+      if(i>1){
+        .list[[i]] <- (1-sum(.list[[i-1]]))*.list[[i]]
+        .rlist[[i]] <- (1-sum(.rlist[[i-1]]))*.rlist[[i]]
+      }
     }
+    for (i in  1:length(.list)){
+      .list[[i]] <- mats[[indeces[i]]]$ball * .list[[i]] * xT
+      .rlist[[i]] <- mats[[indeces[i]]]$ball * .rlist[[i]] * xT_right
+      
+      if(i>1){
+        .list[[i]] <- (1-sum(.list[[i-1]]))*.list[[i]]
+        .rlist[[i]] <- (1-sum(.rlist[[i-1]]))*.rlist[[i]]
+      }
+    }
+    #print(.list %>% unlist)
 
-    left <- (Reduce('+',.list)*xT) %>% sum
-    right <- (Reduce('+',.rlist) * xT_right) %>% sum
+    left <- (Reduce('+',.list)) %>% sum
+    left <- left/10
+    right <- (Reduce('+',.rlist)) %>% sum
+    right <- right/10
     
     c(left,right) %>% return()
   }
-  
   for (number in match_numbers){
-    print(number)
-    if (as.integer(number) == 1){
-      break
+    if(as.integer(number) < 201 | as.integer(number) > 400){
+      next
     }
+    print(number)
     file <- grep(paste0('.*/',number,'-'),unzip(path, list=TRUE)$Name,value=T)
     con = unz(description = path,filename = file)
     match <- read.csv(con)
     match <- match[,!(names(match) %in% c("X","index"))]
     
-    #get match info
-    score_left <- match[1,c("final_score_left")]
-    score_right <- match[1,c("final_score_right")]
+    getThreat <- function(match,no) {
+      out <- tryCatch(
+        {
+          
+          #get match info
+          score_left <- match[1,c("final_score_left")]
+          score_right <- match[1,c("final_score_right")]
+          
+          #find total xG for game
+          xG_left <- events %>%
+            subset(matchNo == number & action == "shot" & team == "l") %>%
+            subset(select = c("x","y"))
+          xG_left <- predict(xG,xG_left)
+          xG_left <- (exp(xG_left)/(1+exp(xG_left))) %>% sum
+          
+          xG_right <- events %>%
+            subset(matchNo == number & action == "shot" & team == "r") %>%
+            subset(select = c("x","y"))
+          xG_right <- predict(xG,xG_right)
+          xG_right <- (exp(xG_right)/(1+exp(xG_right))) %>% sum
+          
+          xG_tot <- xG_left+xG_right
+          
+          #find total xT for game
+          xT_left <- events %>%
+            subset(matchNo == number & team == "l") %>%
+            apply(FUN = get_xT, MARGIN = 1) %>%
+            sum
+          
+          xT_rightNo <- events %>%
+            subset(matchNo == number & team == "r") %>%
+            apply(FUN = get_xT, MARGIN = 1) %>%
+            sum
+          
+          xT_tot <- xT_left + xT_rightNo
+          
+          xP <- match %>%
+            subset(state == " play_on")
+          xP <- xP %>% split(xP$frame)
+          xP <- xP %>%
+            pblapply(FUN = get_xP)
+          
+          xP_left <- Reduce('+',xP %>%
+                              lapply(FUN = function(x){return(x[1:1120])})) %>%
+            sum
+          xP_right <- Reduce('+',xP %>%
+                               lapply(FUN = function(x){return(x[1121:2240])})) %>%
+            sum
+          
+          xP_tot <- xP_left + xP_right
+          
+          rm(xP)
+          gc()
+          #browser()
+          fr <- match %>% subset(frame == 100)
+          get_xI(fr)
+          
+          xI <- match %>%
+            subset(state == " play_on")
+          xI <- xI %>% split(xI$frame)
+          xI <- xI %>%
+            pblapply(FUN = get_xI)
+          
+          xI_left <- Reduce('+',xI %>%
+                              lapply(FUN = function(x){return(x[1])})) %>%
+            sum
+          xI_right <- Reduce('+',xI %>%
+                               lapply(FUN = function(x){return(x[2])})) %>%
+            sum
+          
+          xI_tot <- xI_left + xI_right
+          
+          rm(xI)
+          gc()
+          
+          return(c(xG_tot,xG_left,xG_right,
+            xT_tot,xT_left,xT_rightNo,
+            xP_tot,xP_left,xP_right,
+            xI_tot,xI_left,xI_right,
+            score_left,score_right))
+        },
+        error=function(cond) {
+          message(cond)
+          return("error")
+        }
+      )    
+      return(out)
+    }
     
-    #find total xG for game
-    xG_left <- events %>%
-      subset(matchNo == number & action == "shot" & team == "l") %>%
-      subset(select = c("x","y"))
-    xG_left <- predict(xG,xG_left)
-    xG_left <- (exp(xG_left)/(1+exp(xG_left))) %>% sum
-    
-    xG_right <- events %>%
-      subset(matchNo == number & action == "shot" & team == "r") %>%
-      subset(select = c("x","y"))
-    xG_right <- predict(xG,xG_right)
-    xG_right <- (exp(xG_right)/(1+exp(xG_right))) %>% sum
-    
-    xG_tot <- xG_left+xG_right
-    
-    #find total xT for game
-    xT_left <- events %>%
-      subset(matchNo == number & team == "l") %>%
-      apply(FUN = get_xT, MARGIN = 1) %>%
-      sum
-    
-    xT_right <- events %>%
-      subset(matchNo == number & team == "r") %>%
-      apply(FUN = get_xT, MARGIN = 1) %>%
-      sum
+    getTimeSeries <- function(match){
+      xI <- match %>%
+        subset(state = " play_on")
+      xI <- xI %>% 
+        split(xI$frame) %>%
+        pblapply(FUN = get_xI)
       
-    xT_tot <- xT_left + xT_right
+      rm(playersFiles,inherits=T)
+      rm(ballFiles,inherits=T)
+      gc()
       
-    xP <- match %>%
-      subset(state == " play_on")
-    xP <- xP %>% split(xP$frame)
-    xP <- xP %>%
-      pblapply(FUN = get_xP)
-    
-    xP_left <- xP %>%
-      lapply(FUN = function(x){return(x[1])}) %>%
-      unlist %>%
-      sum
-    xP_right <- xP %>%
-      lapply(FUN = function(x){return(x[2])}) %>%
-      unlist %>%
-      sum
-    
-    xP_tot <- xP_left + xP_right
-
-    xI <- match %>%
-      subset(state == " play_on")
-    xI <- xI %>% split(xI$frame)
-    xI <- xI %>%
-      pblapply(FUN = get_xI)
+      browser()
       
-    xI_left <- xI %>%
-      lapply(FUN = function(x){return(x[1])}) %>%
-      unlist %>%
-      sum
-    xI_right <- xI %>%
-      lapply(FUN = function(x){return(x[2])}) %>%
-      unlist %>%
-      sum
-    
-    xI_tot <- xI_left + xI_right
-    cum_threat[cum_threat$matchNo == number,c(2:15)] <- c(xG_tot,xG_left,xG_right,
-                                                          xT_tot,xT_left,xT_right,
-                                                          xP_tot,xP_left,xP_right,
-                                                          xI_tot,xI_left,xI_right,
-                                                          score_left,score_right)
+      xI_left <- xI %>%
+        lapply(FUN = function(x){return(x[1])}) %>%
+        unlist %>%
+        as.vector
+      xI_right <- xI %>%
+        lapply(FUN = function(x){return(x[2])})%>%
+        unlist %>%
+        as.vector
+      
+      return(data.frame(matchNo = match$matchNo[1],
+                        frame = 1:length(xI_left),
+                        left_team = match$left_team[1],
+                        right_team = match$right_team[1],
+                        threat_left = xI_left,
+                        threat_right = xI_right))
+    }
+    gather = T
+    if (gather){
+      tt <- getThreat(match,number)
+      if (length(tt) == 1){
+        cum_threat[cum_threat$matchNo == number,c(2:15)] <- c(rep(NA,14))
+      }
+      else{
+        cum_threat[cum_threat$matchNo == number,c(2:15)] <- tt  
+      }  
+    }
+    else{
+      cum_threat <- getTimeSeries(match)
+    }
     
   }
   h5closeAll()
   return(cum_threat)
 }
 
+#debug(run_threat)
+df <- run_threat()
+
+df_n <- df %>% na.omit %>% subset(matchNo > 200 & matchNo < 401)
+write.csv(x = df_n,file = "C:/Users/David/Desktop/threat_omit_201_400_backup.csv")
+
+
+file <- grep(paste0('.*/',52,'-'),unzip("C:/Users/David/OneDrive/Documents/Work/Thesis/data/matches_formatted.zip", list=TRUE)$Name,value=T)
+con = unz(description = "C:/Users/David/OneDrive/Documents/Work/Thesis/data/matches_formatted.zip",filename = file)
+match <- read.csv(con)
+match <- match[,!(names(match) %in% c("X","index"))]
 
 df <- run_threat()
+ctmF <- (1/(1+exp(10*(df[,5]-df[,6]))) %>% stats::filter(rep(1/10,10),sides=2))[seq(1,nrow(df),10)]
+ctmF <- ctmF %>% na.omit
+nframes <- ctmF %>% length()
+sub <- seq(1,nframes) %>% as.matrix()
+this.ma <- function(n,x){stats::filter(x, rep(1/n, n), sides = 2)}
+
+sum<-pbapply(FUN=this.ma,MARGIN=1,X=sub,x=ctmF) %>%
+  reshape2::melt() %>% 
+  stats::setNames(c('x','y','threat'))
+
+ggplot()+
+  fte_theme()+
+  geom_tile(data = sum %>% na.omit,
+            mapping = aes(x=x,y=y,fill = threat)) + 
+  scale_fill_gradientn(colours=c(pal[2],pal[1],"white",pal[3],pal[4]),
+                       values = c(0,0.49,0.5,0.51,1),
+                       limits = c(0,1)) + 
+  geom_vline(xintercept = (((match %>% 
+                               subset(state == " goal_l" | state == " goal_r"))$frame  
+                            %>% unique)*2/30) 
+             %>% round, color = c(pal[4],pal[2]),show.legend=F,size = 1.5)+
+  labs(fill = "Comparative Threat",x = "Seconds Passed During Game",y="Range of Average in Seconds")+
+  theme(legend.position="bottom")+
+  guides(fill=guide_legend(title.vjust = 0.8))
+
 
 
 

@@ -126,14 +126,16 @@ ctm_plot <- function(ct){
 }
 
 pos <- match %>%
+        subset(state == " play_on") %>%
         ctm(FUN=possession)
 cent <- match %>%
+  subset(state == " play_on") %>%
         ctm(FUN=centroid)
 p1 <- ggplot()+
   ctm_plot(pos)+
   geom_vline(data = subset(match,state %in% c(" goal_l"," goal_r") & player ==1),
-             aes(xintercept = frame/10,
-                 color = state),show.legend = F)+
+             aes(xintercept = frame*2/30,
+                 color = state),show.legend = F,size=1.5)+
   fte_theme()+
   scale_fill_manual(values = c(pal[2],pal[3]))+
   scale_color_manual(values = c(pal[2],pal[4]))+
@@ -143,8 +145,8 @@ p1 <- ggplot()+
 p2 <- ggplot()+
   ctm_plot(cent)+
   geom_vline(data = subset(match,state %in% c(" goal_l"," goal_r") & player ==1),
-             aes(xintercept = frame/10,
-                 color = state),show.legend = F)+
+             aes(xintercept = frame*2/30,
+                 color = state),show.legend = F,size=1.5)+
   fte_theme()+
   scale_fill_manual(values = c(pal[2],pal[3]))+
   scale_color_manual(values = c(pal[2],pal[4]))+

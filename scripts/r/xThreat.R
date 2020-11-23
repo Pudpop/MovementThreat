@@ -118,6 +118,13 @@ xT <- matrix(0,nrow=x_segmentation,ncol=y_segmentation)
 filename <- "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/threat_probs.hdf5"
 
 if (TRUE){
+  xT <- h5read(filename,"xT")
+  xT_right <- xT
+  xT_right <- xT_right[,c(ncol(xT_right):1)]
+  xT_right <- xT_right[c(nrow(xT_right):1),]
+}
+
+if (FALSE){
   h5createFile(filename)
   filename %>% h5createDataset("probs",
                                dims = c(num_cells,num_cells),
@@ -171,7 +178,7 @@ write_probs <- function(){
     
   }
 }
-write_probs()
+#write_probs()
 
 
 prob_shoot <- function(x,y){
