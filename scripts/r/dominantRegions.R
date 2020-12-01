@@ -53,32 +53,32 @@ reach <- function(param,mm = fujsug){
 #reachable region defined in the case of brefeld
 reach_brefeld <- function(param,momo,timesList = times,
                           path = "C:/Users/David/OneDrive/Documents/Work/Thesis/Code/Data/test/transformed_points"){
-  
+
   posx=2
   posy=3
-  
+
   precision <- c(rep(0.999,20),rep(0.99,20),rep(0.95,10),rep(0.9,10),rep(0.5,9))
-  
+
   this.player = (as.numeric(param[1])-2) %% 11 + 1
-  
+
   this.team = 2
   this.team.name = momo[2]
   if (param[7] == "l"){
     this.team = 1
     this.team.name = momo[1]
   }
-  
+
   time_delta_index <- which(timesList == as.numeric(param[8]))
-  
+
   directory <- paste0(path,"/",this.team.name,"/player_",this.player,"/speed_",param[6],"/time_",time_delta_index,".csv.gz")
   trans_points <- read.csv(directory)
-  
+
   dens <- kde2d(trans_points$X0,trans_points$X1,
                 h = c(ifelse(bandwidth.nrd(trans_points$X0) < 0.001, 0.1, bandwidth.nrd(trans_points$X0)),
                       ifelse(bandwidth.nrd(trans_points$X1) < 0.001, 0.1, bandwidth.nrd(trans_points$X1))),
                 n = c(107,70),
                 lims = c(-53.5,53.5,-35,35))
-  
+
   if (length(dens) == 1){
     cl <- data.frame(x = as.numeric(param[2])-53.5,y=as.numeric(param[3])-35)
     posx=1
@@ -99,19 +99,19 @@ reach_brefeld <- function(param,momo,timesList = times,
     else{
       cl <- cl %>% lapply(FUN=data.frame) %>% bind_rows()
     }
-    
+
   }
-  
+
   rot_angle <- atan2(param[5] %>% as.numeric(),
                      param[4] %>% as.numeric())
   cl$rotx <- (cl$x)*cos(rot_angle)+(cl$y)*sin(rot_angle)
   cl$roty <- (cl$x)*(-sin(rot_angle))+ (cl$y)*cos(rot_angle)
-  
+
   cl$x <- cl$rotx + as.numeric(param[2])
   cl$y <- cl$roty + as.numeric(param[3])
-  
+
   return(cl[,c(posx,posy)])
-  
+
 }
 
 #find partial reachable regions
@@ -130,8 +130,8 @@ partial <- function(time, one_frame,momo = fujsug){
     }
   }
   else{
-    rr<-apply(FUN=reach,MARGIN=1,X=cbind(one_frame[,9:12],rep(time,22)),mm = momo) 
-    
+    rr<-apply(FUN=reach,MARGIN=1,X=cbind(one_frame[,9:12],rep(time,22)),mm = momo)
+
     #format column names for bind_rows
     for ( i in 1:length(rr)){
       colnames(rr[[i]]) <- c("x","y")
@@ -139,18 +139,18 @@ partial <- function(time, one_frame,momo = fujsug){
     #create one data frame
     rr<-bind_rows(rr,.id='id')
   }
-  
+
   #convert to sf object
   df.sf <- rr %>%
     st_as_sf( coords = c( "x", "y" ) )
-  
+
   #find convex hulls of each region
   hulls <- df.sf %>%
     group_by( id ) %>%
     summarise( geometry = st_combine( geometry ) ,do_union=F,.groups="drop") %>%
     st_convex_hull() %>%
     suppressWarnings()
-  
+
   #if (!(is_empty(empty))){
   #union of previously empty regions
   #add union
@@ -159,15 +159,15 @@ partial <- function(time, one_frame,momo = fujsug){
   #                                    st_cast("MULTIPOLYGON") %>%
   #                                    suppressWarnings()
   #                     )
-  
+
   #replace emptyies with empty polygon
   #  hulls[emptyempty,]<-st_sf(data.frame(id="1",geometry=st_sfc(st_polygon())))
   #}
-  
-  
+
+
   #list of all intersections between polygons in sf object hulls
   inter<-st_intersects(hulls)
-  
+
   # find all pairwise intersections
   tw_inter <- inter %>%
     graph_from_data_frame(directed=F) %>%
@@ -188,12 +188,12 @@ partial <- function(time, one_frame,momo = fujsug){
       temp$geometry[[tw_inter$V2[[k]]]] <- diff2
     }
   }
-  
+
   #print(temp$geometry)
   #empty_indices <<- unique(c(empty,which(st_is_empty(subset(temp,id %in% temp$id))==TRUE)))
   #return(subset(temp,id %in% temp$id))#
   return(temp)
-  
+
 }
 
 #step 4 of algorithm: synthesize the partial dominant regions
@@ -276,13 +276,13 @@ form_syn <- function(index,this.partialRR){
   }
   combined2 <- synthesize(index,this.partialRR)
   if (!(class(combined2)[[2]]=="GEOMETRYCOLLECTION" | class(combined2)[[2]]=="POINT")){
-    combined2<-st_cast(st_sfc(combined2),"POLYGON") 
+    combined2<-st_cast(st_sfc(combined2),"POLYGON")
     combined2<- st_sf(team = rep(team,length(combined2)),geometry = combined2)
   }
   else{
     combined2<- st_sf(team = team,geometry = st_geometrycollection() %>% st_sfc())
   }
-  
+
   return(combined2)
 }
 
@@ -295,9 +295,9 @@ get_positional_data <- function(row,time,
   x <- floor((row["x"] %>% as.numeric)/x_bin_width)
   y <- floor((row["y"] %>% as.numeric)/y_bin_width)
   team <- ifelse(row["team"] == "l",1,-1) %>% as.numeric()
-  
+
   #filename <- paste0(path,"/time_",time,"/speed_",speed,"/angle_",angle,"/",x,"_",y,".csv.gz")
-  
+
   #get_kde <- function(mm){
   #  kde2d(mm$pux,mm$puy,
   #        h = c(ifelse(bandwidth.nrd(mm$pux) < 0.001, 0.1, bandwidth.nrd(mm$pux)),
@@ -305,13 +305,13 @@ get_positional_data <- function(row,time,
   #        n = c(x_segmentation,y_segmentation),
   #        lims = c(0,pitch_length,0,pitch_width))
   #}
-  
+
   filename <- paste0(path,"/time",".hdf5")
-  
-  
+
+
   readFileTC <- function(file) {
     out <- tryCatch({
-        temp <- h5read(file,paste0("time_",time))[,x*y_segmentation + y + 1,angle+1,speed+1] %>% 
+        temp <- h5read(file,paste0("time_",time))[,x*y_segmentation + y + 1,angle+1,speed+1] %>%
                   matrix(nrow=x_segmentation,byrow=T)
         s <- sum(temp)
         if (s == 0){
@@ -330,7 +330,7 @@ get_positional_data <- function(row,time,
         return(NA)
         #return(matrix(0L,nrow=x_segmentation,ncol=y_segmentation))
         }
-    )    
+    )
     return(out)
   }
   readFileTC(filename) %>% return()
@@ -358,7 +358,7 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
     return(combined)
   }
   else if (model == "voronoi"){
-    
+
     #voronoi tessselation
     st_voronoi_point <- function(points){
       ## points must be POINT geometry
@@ -370,8 +370,8 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
       v = st_collection_extract(v)
       return(v[unlist(st_intersects(points, v))])
     }
-    
-    
+
+
     box <- c(xmin = 0, xmax = 107, ymax = 0, ymin = 70) %>%
       st_bbox() %>%
       st_as_sfc()
@@ -385,25 +385,25 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
     return(voronoi)
   }
   else if (model == "ppc"){
-    
+
     cut_xy <- function(x,is.x=TRUE){
       if(is.x){
         return( floor((x %>% as.numeric)/x_bin_width))
       }
       return(floor((x %>% as.numeric)/y_bin_width))
     }
-    
+
     ball_pos <- c((ball$x %>% cut_xy)+1,(ball$y %>% cut_xy(is.x=FALSE))+1)
-    
+
     get_time <- function(time){
       #path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/positional"
       #if (ballDo){
       #  path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/ball"
       #}
-      
+
       #temp <- h5read(paste0(path,"/time",".hdf5"),
       #               paste0("time_",time))
-      
+
       get_position <- function(row){
         if (row[4] == 'r'){
           orig <- row[3] %>% as.integer
@@ -414,28 +414,28 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
           orig <- (orig.x-1)*y_segmentation + orig.y
           mattt <- (temp[,orig %>% as.integer,
                           row[2]  %>% as.integer,
-                          row[1]  %>% as.integer]) %>% 
+                          row[1]  %>% as.integer]) %>%
                    matrix(nrow=x_segmentation,byrow=T)
           mattt <- mattt[,c(ncol(mattt):1)]
           mattt <- mattt[c(nrow(mattt):1),]
           summatt <- sum(mattt)
           if (summatt >0){
-            return(mattt/(summatt))  
+            return(mattt/(summatt))
           }
           return(matrix(0,nrow=x_segmentation,ncol=y_segmentation))
         }
         mattt <- temp[,(row[3]%>% trimws %>% as.integer+1),
                       row[2]  %>% as.integer,
-                      row[1]  %>% as.integer]%>% 
+                      row[1]  %>% as.integer]%>%
           matrix(nrow=x_segmentation,byrow=T)
         summatt <- sum(mattt)
         if (summatt >0){
-          return(mattt/(summatt))  
+          return(mattt/(summatt))
         }
         return(matrix(0,nrow=x_segmentation,ncol=y_segmentation))
       }
       ball_mat <- matrix(0,nrow=x_segmentation,ncol=y_segmentation)
-      
+
       path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/ball"
       temp <- h5read(paste0(path,"/time",".hdf5"),
                      paste0("time_",time))
@@ -448,17 +448,17 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
       path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/positional"
       temp <- h5read(paste0(path,"/time",".hdf5"),
                      paste0("time_",time))
-      
+
       mats <- (frame$x %>% cut_xy) * y_segmentation + frame$y %>% cut_xy(is.x=F)
       mats <- data.frame(speedGroup = frame$speedGroup %>% as.integer,
                         angleGroup = frame$angleGroup %>% as.integer,
                         position = mats %>% as.integer,
-                        team = frame$team) %>% 
+                        team = frame$team) %>%
           apply(FUN = get_position,MARGIN=1)
       h5closeAll()
       return(list(ball = ball_mat,players = mats))
     }
-    
+
     dist_mat <- function(row,ball){
       d = dist(matrix(c(row[1:2],ball),byrow=T,nrow=2),method="manhattan")
       if (d == 0){
@@ -467,53 +467,53 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
       if (d != dist(matrix(c(row[1:2],ball),byrow=T,nrow=2))){
         x_dist <- abs(row[1]-ball[1])
         y_dist <- abs(row[2]-ball[2])
-        return(min(ceiling(max(c(x_dist,y_dist))),7))  
+        return(min(ceiling(max(c(x_dist,y_dist))),7))
       }
       return(min(ceiling(d),7))
     }
-    
+
     get_cell_influence <- function(coords,mm){
       time <- coords[3] %>% as.integer
       x <- coords[1] %>% as.integer
       y <- coords[2] %>% as.integer
-      
+
       mm <- mm[[time]]$players
-      
+
       l_inf <- rep(0,11)
       r_inf <- rep(0,11)
-      
+
       for (i in 1:22){
         team <- frame$team[i]
         player <- (frame$player[i]-2)%%11+1
         temp <- mm[,i] %>% matrix(nrow=x_segmentation,ncol=y_segmentation)
         max_prob <- max(temp)
-        temp <- temp/max_prob 
-        
+        temp <- temp/max_prob
+
         if (team == "l"){
           l_inf[player %>% as.integer] <- temp[x,y]
         }
         else{
           r_inf[player %>% as.integer] <- temp[x,y]
         }
-        
+
       }
       return(1/(1+exp(sum(r_inf)-sum(l_inf))))
     }
-    
+
     get_ball_probs <- function(coords,mm){
       time <- coords[3] %>% as.integer
       x <- coords[1] %>% as.integer
       y <- coords[2] %>% as.integer
-      
+
       return(mm[[time]]$ball[x,y])
     }
-    
+
     pos_mat <- matrix(0,nrow=x_segmentation,ncol=y_segmentation) %>%
       melt %>%
       apply(FUN = dist_mat,MARGIN=1,ball = ball_pos) %>%
       matrix(nrow=x_segmentation,ncol=y_segmentation) %>%
       melt
-    
+
     start <- Sys.time()
     mats <- c(0,1,2,3,4,5,6) %>%
               lapply(FUN=get_time)
@@ -539,7 +539,7 @@ calculate_pitch_control <- function(frame,model,nproc = 8,this.times = times){
 #plot the pitch control/dominant regions
 plot_pc <- function(pc,frame,sf=FALSE,threat = FALSE){
   if (threat){
-    
+
     ds <- sum(pc)
     d <- data.frame(s=ds)
     return(soccerPitch() +
@@ -602,26 +602,10 @@ plot_pc <- function(pc,frame,sf=FALSE,threat = FALSE){
                  show.legend = F))
 }
 
-#function to test algorithms
-test <- function(path = "C:/Users/David/OneDrive/Documents/Work/Thesis/data/matches_formatted.zip",
-                 file = "matches_formatted/cyrus2017-vs-Gliders2016/17-20170905234225-CYRUS_0-vs-Gliders2016_0.csv",
-                 mm = "ppc"){
-  print("load") 
-  con = unz(description = path,filename = file)
-  match <- read.csv(con)
-  #close(con)
-  match <- match[,!(names(match) %in% c("X","index"))]
-  one_frame = subset(match,frame == 4000 & player != 1)
-  rm(match)
-   
-  print("start")
-  return(calculate_pitch_control(one_frame,mm) %>% plot_pc(one_frame))
-}
-
-
+#calculate the threat for games using the 4 different threat metrics
 run_threat <- function(){
   path = "C:/Users/David/OneDrive/Documents/Work/Thesis/data/matches_formatted.zip"
-  
+
   pathO <- "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/positional"
   playersFiles <- list()
   playersFiles[[1]] <- h5read(paste0(pathO,"/time",".hdf5"),
@@ -638,7 +622,7 @@ run_threat <- function(){
                               paste0("time_",5))
   playersFiles[[7]] <- h5read(paste0(pathO,"/time",".hdf5"),
                               paste0("time_",6))
-  
+
   pathO <- "C:/Users/David/OneDrive/Documents/Work/Thesis/Data/ball"
   ballFiles <- list()
   ballFiles[[1]] <- h5read(paste0(pathO,"/time",".hdf5"),
@@ -655,9 +639,9 @@ run_threat <- function(){
                            paste0("time_",5))
   ballFiles[[7]] <- h5read(paste0(pathO,"/time",".hdf5"),
                            paste0("time_",6))
-  
+
   match_numbers <- events$matchNo %>% unique
-  
+
   cum_threat <- data.frame(matchNo = match_numbers,
                            xG = 0,
                            xG_left = 0,
@@ -673,26 +657,26 @@ run_threat <- function(){
                            xI_right = 0,
                            score_left = 0,
                            score_right = 0)
-  
+
   get_xT <- function(event){
     event <- as.data.frame(t(event))
     return(xT[event$xBlock %>% as.integer,event$yBlock %>% as.integer])
   }
-  
+
   get_xP <- function(frame){
     ball = frame %>% subset(player == 1)
     frame <- frame %>% subset(player!=1)
-    
+
     cut_xy <- function(x,is.x=TRUE){
       if(is.x){
         return( floor((x %>% as.numeric)/x_bin_width))
       }
       return(floor((x %>% as.numeric)/y_bin_width))
     }
-    
+
     ball_pos <- c((ball$x %>% cut_xy)+1,(ball$y %>% cut_xy(is.x=FALSE))+1)
-    
-    
+
+
     get_time <- function(time){
       get_position <- function(row){
         if (row[4] == 'r'){
@@ -704,28 +688,28 @@ run_threat <- function(){
           orig <- (orig.x-1)*y_segmentation + orig.y
           mattt <- (temp[,orig %>% as.integer,
                          row[2]  %>% as.integer,
-                         row[1]  %>% as.integer]) %>% 
+                         row[1]  %>% as.integer]) %>%
             matrix(nrow=x_segmentation,byrow=T)
           mattt <- mattt[,c(ncol(mattt):1)]
           mattt <- mattt[c(nrow(mattt):1),]
           summatt <- sum(mattt)
           if (summatt >0){
-            return(mattt/(summatt))  
+            return(mattt/(summatt))
           }
           return(matrix(0,nrow=x_segmentation,ncol=y_segmentation))
         }
         mattt <- temp[,(row[3]%>% trimws %>% as.integer+1),
                       row[2]  %>% as.integer,
-                      row[1]  %>% as.integer]%>% 
+                      row[1]  %>% as.integer]%>%
           matrix(nrow=x_segmentation,byrow=T)
         summatt <- sum(mattt)
         if (summatt >0){
-          return(mattt/(summatt))  
+          return(mattt/(summatt))
         }
         return(matrix(0,nrow=x_segmentation,ncol=y_segmentation))
       }
       ball_mat <- matrix(0,nrow=x_segmentation,ncol=y_segmentation)
-      
+
       temp <- ballFiles[[time+1]]
       mats <- get_position(c(ball$speedGroup,
                              ball$angleGroup,
@@ -734,16 +718,16 @@ run_threat <- function(){
       ball_mat <- mats
       return(ball_mat)
     }
-    
+
     mats <- get_time(0)
-    
+
     lon <- seq(0, pitch_length, length.out = x_segmentation)
     lat <- seq(0, pitch_width, length.out = y_segmentation)
     grd <- expand.grid(x = lon, y = lat)
-    
+
     grd_sf  <-  st_as_sf(grd, coords = c("x", "y"), agr = "constant")
-    
-    
+
+
     #voronoi tessselation
     st_voronoi_point <- function(points){
       ## points must be POINT geometry
@@ -755,8 +739,8 @@ run_threat <- function(){
       v = st_collection_extract(v)
       return(v[unlist(st_intersects(points, v))])
     }
-    
-    
+
+
     box <- c(xmin = 0, xmax = 107, ymax = 0, ymin = 70) %>%
       st_bbox() %>%
       st_as_sfc()
@@ -768,16 +752,16 @@ run_threat <- function(){
                      team = frame$team,
                      geometry = voronoi,
                      value = (frame$team == "l") %>% as.numeric)
-    
+
     r <- raster(voronoi,nrows = y_segmentation,ncols= x_segmentation)
-    
+
     count_left <- voronoi %>%
       fasterize(raster =r, field = "value", fun = "sum") %>%
       as.matrix %>%
       t
-    
+
     voronoi$value <- 1-voronoi$value
-    
+
     count_right <- voronoi %>%
       fasterize(raster =r, field = "value", fun = "sum")%>%
       as.matrix %>%
@@ -785,23 +769,23 @@ run_threat <- function(){
 
     left <- mats*count_left*xT
     right <- mats*count_right*xT_right
-    
+
     c(left,right) %>% return()
   }
-  
+
   get_xI <- function(frame){
     ball = frame %>% subset(player == 1)
     frame <- frame %>% subset(player!=1)
-    
+
     cut_xy <- function(x,is.x=TRUE){
       if(is.x){
         return( floor((x %>% as.numeric)/x_bin_width))
       }
       return(floor((x %>% as.numeric)/y_bin_width))
     }
-    
+
     ball_pos <- c((ball$x %>% cut_xy)+1,(ball$y %>% cut_xy(is.x=FALSE))+1)
-    
+
     get_time <- function(time){
       get_position <- function(row){
         if (row[4] == 'r'){
@@ -813,23 +797,23 @@ run_threat <- function(){
           orig <- (orig.x-1)*y_segmentation + orig.y
           mattt <- (temp[,orig %>% as.integer,
                          row[2]  %>% as.integer,
-                         row[1]  %>% as.integer]) %>% 
+                         row[1]  %>% as.integer]) %>%
             matrix(nrow=x_segmentation,byrow=T)
           mattt <- mattt[,c(ncol(mattt):1)]
           mattt <- mattt[c(nrow(mattt):1),]
           summatt <- sum(mattt)
           if (summatt >0){
-            return(mattt/(summatt))  
+            return(mattt/(summatt))
           }
           return(matrix(0,nrow=x_segmentation,ncol=y_segmentation))
         }
         mattt <- temp[,(row[3]%>% trimws %>% as.integer+1),
                       row[2]  %>% as.integer,
-                      row[1]  %>% as.integer]%>% 
+                      row[1]  %>% as.integer]%>%
           matrix(nrow=x_segmentation,byrow=T)
         summatt <- sum(mattt)
         if (summatt >0){
-          return(mattt/(summatt))  
+          return(mattt/(summatt))
         }
         return(matrix(0,nrow=x_segmentation,ncol=y_segmentation))
       }
@@ -841,19 +825,19 @@ run_threat <- function(){
                              (ball_pos[1]-1)*y_segmentation + ball_pos[2]-1,
                              "b"))
       ball_mat <- mats
-      
+
       temp <- playersFiles[[time+1]]
-      
+
       mats <- (frame$x %>% cut_xy) * y_segmentation + frame$y %>% cut_xy(is.x=F)
       mats <- data.frame(speedGroup = frame$speedGroup %>% as.integer,
                          angleGroup = frame$angleGroup %>% as.integer,
                          position = mats %>% as.integer,
-                         team = frame$team) %>% 
+                         team = frame$team) %>%
         apply(FUN = get_position,MARGIN=1)
 
       return(list(ball = ball_mat,players = mats))
     }
-    
+
     get_time_influence <- function(time,mm,teams){
       mm <- mm[[time+1]]
       play <- (mm$players %*% diag(teams)) %>%
@@ -866,15 +850,15 @@ run_threat <- function(){
     add_min <- ifelse(frame$team == "l",
                       1,
                       -1)
-    
+
     #weights <- c(0.3,0.45,0.75,1,1,1,1)
-    
+
     mats <- c(0,1,2,3,4,5,6) %>%
       lapply(FUN=get_time)
-    
+
     .list <- c(0,1,2,3,4,5,6) %>%
-      lapply(FUN = get_time_influence,mm = mats,teams = add_min) 
-    
+      lapply(FUN = get_time_influence,mm = mats,teams = add_min)
+
     .list <- list(.list[[1]],.list[[1]],.list[[1]],
                   .list[[2]],.list[[2]],.list[[2]],.list[[2]],
                   .list[[3]],.list[[3]],.list[[3]],.list[[3]],
@@ -889,13 +873,13 @@ run_threat <- function(){
                   .list[[7]],.list[[7]],.list[[7]],.list[[7]],.list[[7]])
     indeces <- c(rep(1,3),rep(2,5),rep(3,8),
                  rep(4,10),rep(5,10),rep(6,10),rep(7,10))
-    
+
     .rlist <- .list %>%
       lapply(FUN = function(x){1-x})
     for (i in  1:length(.list)){
       .list[[i]] <- mats[[indeces[i]]]$ball * .list[[i]]
       .rlist[[i]] <- mats[[indeces[i]]]$ball * .rlist[[i]]
-      
+
       if(i>1){
         .list[[i]] <- (sum(.list[[i-1]]))*.list[[i]]
         .rlist[[i]] <- (sum(.rlist[[i-1]]))*.rlist[[i]]
@@ -911,7 +895,7 @@ run_threat <- function(){
     left <- left
     right <- (Reduce('+',.rlist)) %>% sum
     right <- right
-    
+
     c(left,right) %>% return()
   }
   for (number in match_numbers){
@@ -923,58 +907,58 @@ run_threat <- function(){
     con = unz(description = path,filename = file)
     match <- read.csv(con)
     match <- match[,!(names(match) %in% c("X","index"))]
-    
+
     getThreat <- function(match,no) {
       out <- tryCatch(
         {
-          
+
           #get match info
           score_left <- match[1,c("final_score_left")]
           score_right <- match[1,c("final_score_right")]
-          
+
           #find total xG for game
           xG_left <- events %>%
             subset(matchNo == number & action == "shot" & team == "l") %>%
             subset(select = c("x","y"))
           xG_left <- predict(xG,xG_left)
           xG_left <- (exp(xG_left)/(1+exp(xG_left))) %>% sum
-          
+
           xG_right <- events %>%
             subset(matchNo == number & action == "shot" & team == "r") %>%
             subset(select = c("x","y"))
           xG_right <- predict(xG,xG_right)
           xG_right <- (exp(xG_right)/(1+exp(xG_right))) %>% sum
-          
+
           xG_tot <- xG_left+xG_right
-          
+
           #find total xT for game
           xT_left <- events %>%
             subset(matchNo == number & team == "l") %>%
             apply(FUN = get_xT, MARGIN = 1) %>%
             sum
-          
+
           xT_rightNo <- events %>%
             subset(matchNo == number & team == "r") %>%
             apply(FUN = get_xT, MARGIN = 1) %>%
             sum
-          
+
           xT_tot <- xT_left + xT_rightNo
-          
+
           #xP <- match %>%
           #  subset(state == " play_on")
           #xP <- xP %>% split(xP$frame)
           #xP <- xP %>%
           #  pblapply(FUN = get_xP)
-          
+
           #xP_left <- Reduce('+',xP %>%
           #                    lapply(FUN = function(x){return(x[1:1120])})) %>%
           #  sum
           #xP_right <- Reduce('+',xP %>%
           #                     lapply(FUN = function(x){return(x[1121:2240])})) %>%
           #  sum
-          
+
           #xP_tot <- xP_left + xP_right
-          
+
           xP_left <- dft %>%
             subset(matchNo == number,
                    select = xP_left) %>%
@@ -984,31 +968,31 @@ run_threat <- function(){
                    select = xP_right) %>%
             as.numeric
           xP_tot <- xP_left + xP_right
-          
+
           #rm(xP)
           gc()
           #browser()
           #fr <- match %>% subset(frame == 100)
           #get_xI(fr)
-          
+
           xI <- match %>%
             subset(state == " play_on")
           xI <- xI %>% split(xI$frame)
           xI <- xI %>%
             pblapply(FUN = get_xI)
-          
+
           xI_left <- Reduce('+',xI %>%
                               lapply(FUN = function(x){return(x[1])})) %>%
             sum
           xI_right <- Reduce('+',xI %>%
                                lapply(FUN = function(x){return(x[2])})) %>%
             sum
-          
+
           xI_tot <- xI_left + xI_right
-          
+
           rm(xI)
           gc()
-          
+
           return(c(xG_tot,xG_left,xG_right,
             xT_tot,xT_left,xT_rightNo,
             xP_tot,xP_left,xP_right,
@@ -1019,23 +1003,23 @@ run_threat <- function(){
           message(cond)
           return("error")
         }
-      )    
+      )
       return(out)
     }
-    
+
     getTimeSeries <- function(match){
       xI <- match %>%
         subset(state = " play_on")
-      xI <- xI %>% 
+      xI <- xI %>%
         split(xI$frame) %>%
         pblapply(FUN = get_xI)
-      
+
       rm(playersFiles,inherits=T)
       rm(ballFiles,inherits=T)
       gc()
-      
+
       browser()
-      
+
       xI_left <- xI %>%
         lapply(FUN = function(x){return(x[1])}) %>%
         unlist %>%
@@ -1044,7 +1028,7 @@ run_threat <- function(){
         lapply(FUN = function(x){return(x[2])})%>%
         unlist %>%
         as.vector
-      
+
       return(data.frame(matchNo = match$matchNo[1],
                         frame = 1:length(xI_left),
                         left_team = match$left_team[1],
@@ -1059,35 +1043,22 @@ run_threat <- function(){
         cum_threat[cum_threat$matchNo == number,c(2:15)] <- c(rep(NA,14))
       }
       else{
-        cum_threat[cum_threat$matchNo == number,c(2:15)] <- tt  
-      }  
+        cum_threat[cum_threat$matchNo == number,c(2:15)] <- tt
+      }
     }
     else{
       cum_threat <- getTimeSeries(match)
     }
-    
+
   }
   h5closeAll()
   return(cum_threat)
 }
 
 
-#debug(run_threat)
 df <- run_threat()
 
-df_n <- df %>% na.omit %>% subset(matchNo > 500 & matchNo %in% dft$matchNo)
-write.csv(x = df_n,file = "C:/Users/David/Desktop/threat_omit_500_test.csv")
-write.csv(x = df_n,file = "C:/Users/David/Desktop/threat_omit_500_backup_test.csv")
-
-df_1 <- read.csv("C:/Users/David/Desktop/threat_omit_0_99_test.csv")
-df_2 <- read.csv("C:/Users/David/Desktop/threat_omit_100_499_test.csv")
-
-df_main <- bind_rows(list(df_n,df_1,df_2))
-write.csv(x = df_n[,-c(16)],file = "C:/Users/David/Desktop/threat_all_final.csv")
-write.csv(x = df_n[,-c(16)],file = "C:/Users/David/Desktop/threat_all_final_backup.csv")
-
-write.csv(x = df_main,file = "C:/Users/David/Desktop/threat_all_backup.csv",row.names = F)
-
+#get extra information for games
 path = "C:/Users/David/OneDrive/Documents/Work/Thesis/data/matches_formatted.zip"
 match_numbers <- events$matchNo %>% unique
 all_matches <- data.frame(matchNo = match_numbers,
@@ -1105,14 +1076,14 @@ for (number in match_numbers){
   con = unz(description = path,filename = file)
   match <- read.csv(con)
   match <- match[,!(names(match) %in% c("X","index"))]
-  
+
   nf <- match$frame %>%
     unique %>%
     length
   nfo <- subset(match,state == " play_on")$frame %>%
     unique %>%
     length
-  
+
   all_matches[all_matches$matchNo == number,] <- c(number,
                                                    match$left_team[1],
                                                    match$final_score_left[1],
@@ -1123,6 +1094,7 @@ for (number in match_numbers){
 
 write.csv(x = all_matches,file = "C:/Users/David/Desktop/all_matches.csv",row.names = F)
 
+#plot ctm of threat
 file <- grep(paste0('.*/',52,'-'),unzip("C:/Users/David/OneDrive/Documents/Work/Thesis/data/matches_formatted.zip", list=TRUE)$Name,value=T)
 con = unz(description = "C:/Users/David/OneDrive/Documents/Work/Thesis/data/matches_formatted.zip",filename = file)
 match <- read.csv(con)
@@ -1136,19 +1108,19 @@ sub <- seq(1,nframes) %>% as.matrix()
 this.ma <- function(n,x){stats::filter(x, rep(1/n, n), sides = 2)}
 
 sum<-pbapply(FUN=this.ma,MARGIN=1,X=sub,x=ctmF) %>%
-  reshape2::melt() %>% 
+  reshape2::melt() %>%
   stats::setNames(c('x','y','threat'))
 
 ggplot()+
   fte_theme()+
   geom_tile(data = sum %>% na.omit,
-            mapping = aes(x=x,y=y,fill = threat)) + 
+            mapping = aes(x=x,y=y,fill = threat)) +
   scale_fill_gradientn(colours=c(pal[2],pal[1],"white",pal[3],pal[4]),
                        values = c(0,0.49,0.5,0.51,1),
-                       limits = c(0,1)) + 
-  geom_vline(xintercept = (((match %>% 
-                               subset(state == " goal_l" | state == " goal_r"))$frame  
-                            %>% unique)*2/30) 
+                       limits = c(0,1)) +
+  geom_vline(xintercept = (((match %>%
+                               subset(state == " goal_l" | state == " goal_r"))$frame
+                            %>% unique)*2/30)
              %>% round, color = c(pal[4],pal[2]),show.legend=F,size = 1.5)+
   labs(fill = "Comparative Threat",x = "Seconds Passed During Game",y="Range of Average in Seconds")+
   theme(legend.position="bottom")+
@@ -1156,41 +1128,7 @@ ggplot()+
 
 
 
-
-path = "C:/Users/David/OneDrive/Documents/Work/Thesis/data/matches_formatted.zip"
-#file = "matches_formatted/Gliders2016-vs-ri-one/246-20170904134510-Gliders2016_6-vs-Ri-one_0.csv"
-file = "matches_formatted/cyrus2017-vs-Gliders2016/13-20170905233758-CYRUS_3-vs-Gliders2016_8.csv"
-con = unz(description = path,filename = file)
-match <- read.csv(con)
-close(con)
-
-match <- match[,!(names(match) %in% c("X","index"))]
-one_frame = subset(match,frame == 1820)
-
-temp <- calculate_pitch_control(one_frame,"ppc") %>% plot_pc(one_frame %>% subset(player != 1))
-temp <- calculate_pitch_control(one_frame ,"ppc")
-temp <- 1-temp
-temp[temp <0.5] = 0
-#temp[temp <=0.5 & temp !=0] = 1-temp[temp <=0.5 & temp !=0]
-
-temp <- temp %>% matrix(ncol=y_segmentation,nrow=x_segmentation)
-
-ball <- subset(match,frame == 1820 & player == 1)[,c("x","y")] %>% as.vector()
-ball[1] <- floor(ball[1]/x_bin_width)
-ball[2] <- floor(ball[2]/y_bin_width)
-ball_ind <- ((ball[1]-1)*y_segmentation +ball[2]) %>% as.numeric
-
-vec <- h5read(filename,"probs")[ball_ind,]
-mat = matrix(0,nrow=40,ncol=28)
-if (!(sum(vec) == 0)){
-  mat <- (vec/sum(vec)) %>%
-    matrix(nrow=40,ncol=28)
-}
-(1-temp$players) %>% plot_pc(one_frame %>% subset(player!=1),threat = FALSE)
-(temp$players * xT) %>% plot_pc(one_frame %>% subset(player!=1),threat = TRUE)
-(temp$ball * temp$players * xT) %>% plot_pc(one_frame %>% subset(player!=1),threat = TRUE)
-(mat) %>% plot_pc(one_frame,threat = TRUE)
-
+#plot the threat of a frame
 plot_threat <- function(poss,pc,threat,frame,team){
   if (team == "r"){
     threat <- threat[,c(ncol(threat):1)]
@@ -1200,7 +1138,7 @@ plot_threat <- function(poss,pc,threat,frame,team){
     pc <- 1-pc
   }
   pc[pc < 0.5] = 0
-  
+
   th <- (poss)*pc*threat
   ds <- sum(th)
   d <- data.frame(s=ds)
@@ -1239,106 +1177,13 @@ plot_threat <- function(poss,pc,threat,frame,team){
                      size=4))
 }
 
-frames_for_ani <- (shots %>% subset(matchNo == 13 & recPlayer == "goal" & team == "l"))$frame %>% 
-  lapply(FUN = function(x){return(c((x-30):(x+5)))}) %>% 
-  unlist
-frames_for_ani <- cbind(frames_for_ani,
-                        rep((shots %>% 
-                               subset(matchNo == 13 & recPlayer == "goal" & 
-                                        frame %in% frames_for_ani))$team,
-                            each=41)) %>%
-  as.data.frame()
-
-setwd("C:/Users/David/OneDrive/Documents/Work/Thesis/github/fig/animation")
-for (i in 1:nrow(frames_for_ani)){
-  print(frames_for_ani[i,])
-  frameNo <- frames_for_ani[i,1]
-  team <- frames_for_ani[i,2]
-  one_frame = subset(match,frame == frameNo)
-  temp <- calculate_pitch_control(one_frame ,"ppc")
-  pl <- plot_threat(temp$ball,temp$players,xT,one_frame,team)
-  ggsave(paste0("frame_",frameNo,".png"),pl)
-}
 
 
-anim <- soccerPitch() +
-  scale_color_manual(values=c(pal[5],pal[2],pal[4]))+
-  labs(x="",y="")+
-  coord_fixed()+
-  geom_point(data = match %>% subset(frame %in% seq(2900,3050,by=1)),
-             mapping=aes(x=x,y=y,color=as.factor(team)),
-             position = 'jitter',
-             show.legend = F)+
-  geom_segment(data = match %>% subset(frame %in% seq(2900,3050,by=1)),
-               mapping=aes(x=x,xend = x+vX*scale,yend=y+vY*scale,y=y,color=as.factor(team)),
-               arrow = arrow(length = unit(0.1, "cm")),
-               show.legend = F)+
-  geom_text(data = match %>% subset(frame %in% seq(2900,3050,by=1)),
-            mapping=aes(x=x,y=y,color=as.factor(team),label = action),
-            position = 'jitter',
-            show.legend = F)+
-  transition_states(states = frame)
-
-animate(anim,nframes=150,fps=5)
-
-#test()
-
-#path <- "C:/Users/David/OneDrive/Documents/Work/Thesis/github/data/positional"
-#temp <- h5read(paste0(path,"/time.hdf5"),
-#               "time_0")
-
-#temp[,,,] %>% sum
-#h5closeAll()
-
-player_to_state <- function(row,
-){
-  get_info <- function(row){
-    return(c(row$matchNo[1],row$frame[1]))
-  }
-  
-  read_file <- function(info){
-    matchNo <- info[1]
-    frameNo <- info[2]
-    file <- grep(paste0('.*/',matchNo,'-'),unzip(path, list=TRUE)$Name,value=T)
-    con = unz(description = path,filename = file)
-    match <- read.csv(con)
-    #close(con)
-    match <- match[,names(match) %in% colnames(row)]
-    one_frame = subset(match,frame == frameNo)
-    
-    
-    
-    return(one_frame)
-  }
-  
-  
-  return(read_file(get_info(row)))
-}
-
-
-setwd("C:/Users/David/OneDrive/Documents/Work/Thesis/Data/threat")
-dft <- read.csv("threat_omit.csv")[,-c(1,15:18)]
-temp <- read.csv("threat_omit_800_backup.csv")[,-c(1,15:16)]
-dft <- rbind(dft,temp)
-dft <- dft %>% unique
-rm(temp)
-
-all <- read.csv("old model/all_matches.csv") %>%
-  subset(matchNo %in% df$matchNo)
-
-dft <- merge(all_matches,df_main,by="matchNo")%>%
-  mutate(
-    left_team = left_team %>% as.factor,
-    right_team = right_team %>% as.factor
-  )
-rm(all)
-
-write.csv(dft,file = "threat.csv",row.names = F)
-
+#get results of threat analysis
 dft <- read.csv("C:/Users/David/OneDrive/Documents/Work/Thesis/Data/threat/threat.csv",stringsAsFactors = T)
 
 
-
+#get games by team
 get_team_stats <- function(team_name){
   dat <- subset(dft,left_team == team_name | right_team == team_name) %>%
     mutate(
@@ -1399,60 +1244,61 @@ team_stats <- dft %>%
   lapply(FUN = get_team_stats) %>%
   bind_rows()
 
+#create a league table
 get_table <-  function(this.team){
   team_stats %>%
     summarise(
       name = this.team,
-      played = team_stats %>% 
+      played = team_stats %>%
         subset(team == this.team) %>%
         nrow,
-      won = team_stats %>% 
+      won = team_stats %>%
         subset(team == this.team & result == 3) %>%
         nrow,
-      drew = team_stats %>% 
+      drew = team_stats %>%
         subset(team == this.team & result == 1) %>%
         nrow,
-      lost = team_stats %>% 
+      lost = team_stats %>%
         subset(team == this.team & result == 0) %>%
         nrow,
       ppg = (3*won + drew)/played,
-      goals_for = team_stats %>% 
+      goals_for = team_stats %>%
         subset(team == this.team,
                select =c(score)) %>%
         sum/played,
-      goals_a = team_stats %>% 
+      goals_a = team_stats %>%
         subset(team == this.team,
                select =c(score_opp)) %>%
         sum/played,
-      xG_for = team_stats %>% 
+      xG_for = team_stats %>%
         subset(team == this.team,
                select =c(xG)) %>%
         sum/played,
-      xG_a= team_stats %>% 
+      xG_a= team_stats %>%
         subset(team == this.team,
                select =c(xG_opp)) %>%
         sum/played,
-      xT_for = team_stats %>% 
+      xT_for = team_stats %>%
         subset(team == this.team,
                select =c(xT)) %>%
         sum/played,
-      xT_a = team_stats %>% 
+      xT_a = team_stats %>%
         subset(team == this.team,
                select =c(xT_opp)) %>%
         sum/played,
-      xP_for = team_stats %>% 
+      xP_for = team_stats %>%
         subset(team == this.team,
                select =c(xP)) %>%
         sum/played,
-      xP_a = team_stats %>% 
+      xP_a = team_stats %>%
         subset(team == this.team,
                select =c(xP_opp)) %>%
         sum/played,
-      xI_for = team_stats %>% 
+      xI_for = team_stats %>%
         subset(team == this.team,
                select =c(xI)) %>%
         sum/played,
-      xI_a = team_stats %>% 
+      xI_a = team_stats %>%
         subset(team == this.team,
                select =c(xI_opp)) %>%
         sum/played
@@ -1460,7 +1306,7 @@ get_table <-  function(this.team){
     return()
 }
 
-league_table <- team_stats$team %>%
+league_table <- mini_league_teams$team %>%
   unique %>%
   lapply(FUN = get_table)%>%
   bind_rows %>%
@@ -1470,110 +1316,140 @@ league_table <- team_stats$team %>%
   )
 league_table[,-c(1:5)] <- league_table[,-c(1:5)] %>% round(2)
 
+#plot boxplots of threat measures
 p1 <- team_stats %>%
-  ggplot() + 
-  fte_theme() + 
-  geom_boxplot(mapping = aes(x = reorder(team,xG-xG_opp), y = scale(xG-xG_opp),fill = team),show.legend=F)+
-  scale_fill_manual(values = pal) + 
+  ggplot() +
+  fte_theme() +
+  geom_boxplot(mapping = aes(x = reorder(team,xG), y = xG,fill = team),show.legend=F)+
+  scale_fill_manual(values = pal) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  labs(x = "Team",y = "Threat")+
+  geom_hline(yintercept = 0)
+
+p2 <- team_stats %>%
+  ggplot() +
+  fte_theme() +
+  geom_boxplot(mapping = aes(x = reorder(team,xT), y = xT,fill = team),show.legend=F)+
+  scale_fill_manual(values = pal) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  labs(x = "Team",y = "Threat")+
+  geom_hline(yintercept = 0)
+
+p3 <- team_stats %>%
+  ggplot() +
+  fte_theme() +
+  geom_boxplot(mapping = aes(x = reorder(team,xP), y = xP,fill = team),show.legend=F)+
+  scale_fill_manual(values = pal) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  labs(x = "Team",y = "Threat")+
+  geom_hline(yintercept = 0)
+
+p4 <- team_stats %>%
+  ggplot() +
+  fte_theme() +
+  geom_boxplot(mapping = aes(x = reorder(team,xI), y = xI,fill = team),show.legend=F)+
+  scale_fill_manual(values = pal) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))+
+  labs(x = "Team",y = "Threat")+
+  geom_hline(yintercept = 0)
+
+ggarrange(p1,p2,p3,p4,ncol=2,nrow=2)
+
+
+p1 <- team_stats %>%
+  ggplot() +
+  fte_theme() +
+  geom_boxplot(mapping = aes(x = reorder(team,xG-xG_opp), y = xG-xG_opp,fill = team),show.legend=F)+
+  scale_fill_manual(values = pal) +
   theme(axis.text.x = element_text(angle = 45, hjust=1))+
   labs(x = "Team",y = "Threat")
 
 p2 <- team_stats %>%
-  ggplot() + 
-  fte_theme() + 
-  geom_boxplot(mapping = aes(x = reorder(team,xT-xT_opp), y = scale(xT-xT_opp),fill = team),show.legend=F)+
-  scale_fill_manual(values = pal) + 
+  ggplot() +
+  fte_theme() +
+  geom_boxplot(mapping = aes(x = reorder(team,xT-xT_opp), y = xT-xT_opp,fill = team),show.legend=F)+
+  scale_fill_manual(values = pal) +
   theme(axis.text.x = element_text(angle = 45, hjust=1))+
   labs(x = "Team",y = "Threat")
 
 p3 <- team_stats %>%
-  ggplot() + 
-  fte_theme() + 
-  geom_boxplot(mapping = aes(x = reorder(team,xP-xP_opp), y = scale(xP-xP_opp),fill = team),show.legend=F)+
-  scale_fill_manual(values = pal) + 
+  ggplot() +
+  fte_theme() +
+  geom_boxplot(mapping = aes(x = reorder(team,xP-xP_opp), y = xP-xP_opp,fill = team),show.legend=F)+
+  scale_fill_manual(values = pal) +
   theme(axis.text.x = element_text(angle = 45, hjust=1))+
   labs(x = "Team",y = "Threat")
-
 p4 <- team_stats %>%
-  ggplot() + 
-  fte_theme() + 
-  geom_boxplot(mapping = aes(x = reorder(team,xI-xI_opp), y = scale(xI-xI_opp),fill = team),show.legend=F)+
-  scale_fill_manual(values = pal) + 
+  ggplot() +
+  fte_theme() +
+  geom_boxplot(mapping = aes(x = reorder(team,xI-xI_opp), y = xI-xI_opp,fill = team),show.legend=F)+
+  scale_fill_manual(values = pal) +
   theme(axis.text.x = element_text(angle = 45, hjust=1))+
   labs(x = "Team",y = "Threat")
 
 ggarrange(p1,p2,p3,p4,ncol=2,nrow=2)
 
-team_stats %>% 
-  subset(team == "MT2017" & score_opp < 8) %>% 
-  ggplot(mapping = aes(x = xI_opp,y = xI)) + 
+p1 <- team_stats %>%
+  subset(team == "HfutEngine2017" ) %>%
+  ggplot(mapping = aes(x = xI_opp,y = xI)) +
   geom_vline(xintercept = 0)+
   geom_hline(yintercept = 0)+
   geom_smooth(method = "lm",formula = "y~x",se = F,color = pal[2])+
-  geom_point() + 
-  fte_theme() + 
-  labs(x = "Opposition Score", y = "Difference in Threat")
+  geom_point() +
+  fte_theme() +
+  labs(x = "Opposition Incorporated Threat", y = "Hfut Incorporated Threat")
 
-team_stats %>% 
-  subset(team == "CSUYunlu" & score_opp < 8) %>% 
-  ggplot(mapping = aes(x = xI_opp,y = xI)) + 
+p2 <- team_stats %>%
+  subset(team == "HfutEngine2017" ) %>%
+  ggplot(mapping = aes(x = xG_opp,y = xG)) +
   geom_vline(xintercept = 0)+
   geom_hline(yintercept = 0)+
   geom_smooth(method = "lm",formula = "y~x",se = F,color = pal[2])+
-  geom_point() + 
-  fte_theme() + 
-  labs(x = "Opposition Score", y = "Difference in Threat")
+  geom_point() +
+  fte_theme() +
+  labs(x = "Opposition xG", y = "Hfut xG")
 
-team_stats %>% 
-  subset(team == "Oxsy" & score_opp < 8) %>% 
-  ggplot(mapping = aes(x = xI_opp,y = xI)) + 
+ggarrange(p1,p2,ncol=1,nrow=2)
+
+#plot threat vs opp threat
+team_stats %>%
+  ggplot(mapping = aes(x = xI_opp,y = xI)) +
   geom_vline(xintercept = 0)+
   geom_hline(yintercept = 0)+
   geom_smooth(method = "lm",formula = "y~x",se = F,color = pal[2])+
-  geom_point() + 
-  fte_theme() + 
-  labs(x = "Opposition Score", y = "Difference in Threat")
-
-team_stats %>% 
-  subset(team == "MT2017" & score_opp < 8) %>% 
-  ggplot(mapping = aes(x = score_opp,y = xG-xG_opp)) + 
-  geom_vline(xintercept = 0)+
-  geom_hline(yintercept = 0)+
-  geom_smooth(method = "lm",formula = "y~x",se = F,color = pal[2])+
-  geom_point() + 
-  fte_theme() + 
-  labs(x = "Opposition Score", y = "Difference in Threat")
-
+  geom_point() +
+  fte_theme() +
+  labs(x = "Opposition xG", y = "Hfut xG") +
+  facet_wrap(vars(team))
 
 league_table %>%
   ggplot() +
-  fte_theme() + 
+  fte_theme() +
   geom_segment(mapping = aes(x = reorder(name,xI_for-xI_a),xend = reorder(name,xI_for-xI_a),
                y = 0, yend = scale(xI_for-xI_a),color = name),size = 2, show.legend = F)+
-  scale_color_manual(values = pal) + 
+  scale_color_manual(values = pal) +
   labs(x = "Team",y = "Threat")+
   theme(axis.text.x = element_text(angle = 45, hjust=1))
 
+#plot linear models
 lm(final_score_left + final_score_right~xG_left+xG_right,data = dft[1:200,])%>%
-  predict(dft[201:264,]) %>% 
-  cbind(dft[201:264,]$final_score_left+dft[201:264,]$final_score_right) %>% 
-  data.frame %>% 
-  ggplot(mapping = aes(x = ., y = V2)) + 
+  predict(dft[201:264,]) %>%
+  cbind(dft[201:264,]$final_score_left+dft[201:264,]$final_score_right) %>%
+  data.frame %>%
+  ggplot(mapping = aes(x = ., y = V2)) +
   geom_point(size = 5*(dft$xI[201:264])/max((dft$xI[201:264])),
-             alpha = (dft$xI[201:264])/max((dft$xI[201:264]))) + 
-  fte_theme() + 
-  geom_smooth(method = "lm",formula = 'y~x') + 
+             alpha = (dft$xI[201:264])/max((dft$xI[201:264]))) +
+  fte_theme() +
+  geom_smooth(method = "lm",formula = 'y~x') +
   labs(x = "Fitted Value", y = "Observed Number of Goals")
 
 lm(final_score_left + final_score_right~xG_left+xG_right,data = dft[1:200,])%>%
-  predict(dft[201:264,]) %>% 
-  cbind(dft[201:264,]$final_score_left+dft[201:264,]$final_score_right) %>% 
-  data.frame %>% 
-  ggplot(mapping = aes(y = .-V2, x = .)) + 
+  predict(dft[201:264,]) %>%
+  cbind(dft[201:264,]$final_score_left+dft[201:264,]$final_score_right) %>%
+  data.frame %>%
+  ggplot(mapping = aes(y = .-V2, x = .)) +
   geom_point(size = 5*(dft$xI[201:264])/max((dft$xI[201:264])),
-             alpha = (dft$xI[201:264])/max((dft$xI[201:264]))) + 
-  fte_theme() + 
-  geom_smooth(method = "lm",formula = 'y~x') + 
+             alpha = (dft$xI[201:264])/max((dft$xI[201:264]))) +
+  fte_theme() +
+  geom_smooth(method = "lm",formula = 'y~x') +
   labs(x = "Fitted Value", y = "Observed Number of Goals")
-
-
