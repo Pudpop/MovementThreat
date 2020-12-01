@@ -42,7 +42,7 @@ moves <- events %>% subset(action %in% c("pass","dribble"))
 dribbles <- events %>% subset(action == "dribble")
 passes <- events %>% subset(action == "pass")
 
-soccerPitch() + geom_point(data = shots %>% subset(recPlayer != "goal"),mapping = aes(x = x,y = y,color = team))
+soccerPitch() + geom_segment(data = shots %>% subset(recPlayer != "goal"),mapping = aes(x = x,y = y,xend = eventEndPosX, yend = eventEndPosY,color = team))
 
 #train expected goals
 
